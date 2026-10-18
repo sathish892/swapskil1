@@ -1,0 +1,21 @@
+{
+  "name": "skillswap-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "admin:create": "node src/cli/create-admin.js"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-rate-limit": "^8.7.1",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.1.2",
+    "ws": "^8.22.0"
+  }
+}
