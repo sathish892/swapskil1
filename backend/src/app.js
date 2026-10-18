@@ -9,14 +9,12 @@ import { createOpenLearningRoomsRouter } from "./open-learning-rooms.js";
 import { createMeetingCollaborationRouter } from "./meeting-collaboration.js";
 import { createModerationRouter } from "./admin.js";
 import { createStudentRankingsRouter } from "./student-rankings.js";
-import { isDevelopmentFrontendOrigin } from "./origin-policy.js";
+import { getConfiguredOrigins, isDevelopmentFrontendOrigin } from "./origin-policy.js";
 
 export function createApp(database, options = {}) {
   const app = express();
   app.disable("x-powered-by");
-  const configuredOrigins = process.env.APP_ORIGIN
-    ? process.env.APP_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
-    : [];
+  const configuredOrigins = getConfiguredOrigins();
   const defaultOrigins = process.env.NODE_ENV === "production"
     ? ["https://swapskil1.vercel.app"]
     : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];

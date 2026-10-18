@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { authenticateRequest } from "./auth.js";
 import { hasAccess } from "./learning-sessions.js";
 import { hasOpenRoomAccess } from "./open-learning-rooms.js";
-import { isDevelopmentFrontendOrigin } from "./origin-policy.js";
+import { getConfiguredOrigins, isDevelopmentFrontendOrigin } from "./origin-policy.js";
 import { persistMeetingMessage } from "./meeting-collaboration.js";
 
 const send = (socket, data) => {
@@ -22,7 +22,7 @@ export function attachMeetingSignaling(server, database) {
   const originAllowed = (request) => {
     const origin = request.headers.origin;
     if (!origin) return false;
-    const configured = (process.env.APP_ORIGIN || "").split(",").map((item) => item.trim()).filter(Boolean);
+    const configured = getConfiguredOrigins();
     if (configured.includes(origin) || isDevelopmentFrontendOrigin(origin)) return true;
     if (configured.length) return false;
     try { return new URL(origin).host === request.headers.host; } catch { return false; }
