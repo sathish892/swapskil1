@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 13;
+const DATABASE_VERSION = 14;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -390,6 +390,42 @@ export function migrateDatabase(database) {
         );
         CREATE INDEX idx_google_accounts_user ON google_accounts(user_id);
         PRAGMA user_version = 13;
+      `);
+    }
+    if (currentVersion < 14) {
+      database.exec(`
+        CREATE TABLE notifications (
+          id TEXT PRIMARY KEY,
+          recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          notification_type TEXT NOT NULL CHECK (notification_type IN ('exchange_request','request_update','new_message')),
+          title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 160),
+          body TEXT NOT NULL DEFAULT '' CHECK (length(body) <= 240),
+          target_path TEXT NOT NULL CHECK (target_path IN ('/requests','/messages')),
+          reference_id TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          read_at TEXT
+        );
+        CREATE INDEX idx_notifications_recipient_unread ON notifications(recipient_user_id, read_at, created_at DESC);
+
+        CREATE TABLE email_notification_queue_v14 (
+          id TEXT PRIMARY KEY,
+          recipient_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          notification_type TEXT NOT NULL CHECK (notification_type IN ('exchange_request','request_update','new_message','session_reminder')),
+          reference_id TEXT NOT NULL,
+          schedule_key TEXT NOT NULL DEFAULT '',
+          payload TEXT NOT NULL DEFAULT '{}',
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+          last_error TEXT NOT NULL DEFAULT '' CHECK (length(last_error) <= 500),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          sent_at TEXT,
+          UNIQUE (recipient_user_id, notification_type, reference_id, schedule_key)
+        );
+        INSERT INTO email_notification_queue_v14 SELECT * FROM email_notification_queue;
+        DROP TABLE email_notification_queue;
+        ALTER TABLE email_notification_queue_v14 RENAME TO email_notification_queue;
+        CREATE INDEX idx_email_notification_pending ON email_notification_queue(sent_at, attempts, created_at);
+        PRAGMA user_version = 14;
       `);
     }
     database.exec("COMMIT;");

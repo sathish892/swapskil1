@@ -10,6 +10,7 @@ import { createMeetingCollaborationRouter } from "./meeting-collaboration.js";
 import { createModerationRouter } from "./admin.js";
 import { createStudentRankingsRouter } from "./student-rankings.js";
 import { createMeetingTicketsRouter } from "./meeting-tickets.js";
+import { createNotificationsRouter } from "./notifications.js";
 import { getConfiguredOrigins, isDevelopmentFrontendOrigin } from "./origin-policy.js";
 
 export function createApp(database, options = {}) {
@@ -87,6 +88,7 @@ export function createApp(database, options = {}) {
   app.use("/api", createOpenLearningRoomsRouter(database));
   app.use("/api", createMeetingCollaborationRouter(database));
   app.use("/api", createMessagingRouter(database, options.messaging));
+  app.use("/api", createNotificationsRouter(database));
   app.use("/api", createModerationRouter(database));
 
   app.use("/api", (_request, response) => {

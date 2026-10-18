@@ -6,6 +6,8 @@ import { Router } from "express";
 import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 import { requireAuth } from "./auth.js";
+import { createNotification } from "./notifications.js";
+import { dispatchEmailNotifications, queueEmail } from "./email-notifications.js";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FILE_TYPES = {
@@ -195,12 +197,27 @@ export function createMessagingRouter(database, options = {}) {
         database.prepare("INSERT INTO messages (id, conversation_id, sender_id, body) VALUES (?, ?, ?, ?)").run(messageId, req.params.id, req.user.id, body);
         if (req.file) database.prepare("INSERT INTO message_attachments (id, message_id, storage_key, extension, original_name, content_type, byte_size) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(attachmentId, messageId, storageKey, fileInfo.extension, safeOriginalName(req.file.originalname), contentType, req.file.size);
+        const conversation = database.prepare("SELECT kind, group_name FROM conversations WHERE id = ?").get(req.params.id);
+        const recipients = database.prepare(
+          "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id <> ? AND left_at IS NULL",
+        ).all(req.params.id, req.user.id);
+        const notificationTitle = conversation.kind === "group"
+          ? `${req.user.fullName} sent a message in ${conversation.group_name || "your group"}`
+          : `${req.user.fullName} sent you a message`;
+        for (const recipient of recipients) {
+          createNotification(database, {
+            recipientUserId: recipient.user_id, actorUserId: req.user.id, type: "new_message",
+            title: notificationTitle, body: "Open Messages to view it.", targetPath: "/messages", referenceId: messageId,
+          });
+          queueEmail(database, { recipientUserId: recipient.user_id, type: "new_message", referenceId: messageId, payload: { senderName: req.user.fullName } });
+        }
         database.exec("COMMIT;");
       } catch (error) {
         try { database.exec("ROLLBACK;"); } catch { /* transaction may have ended */ }
         if (diskPath) await unlink(diskPath).catch(() => {});
         throw error;
       }
+      void dispatchEmailNotifications(database);
       return res.status(201).json({ message: {
         id: messageId, text: body, createdAt: database.prepare("SELECT created_at FROM messages WHERE id = ?").get(messageId).created_at,
         sender: { id: req.user.id, fullName: req.user.fullName },

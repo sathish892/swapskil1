@@ -72,6 +72,19 @@ function emailContent(row, baseUrl) {
       text: `${payload.senderName || "A student"} sent you an exchange request${about}.\n\nView it in SkillSwap: ${baseUrl}/requests`,
     };
   }
+  if (row.notification_type === "request_update") {
+    const outcome = payload.status === "accepted" ? "accepted" : "declined";
+    return {
+      subject: `Your SkillSwap request was ${outcome}`,
+      text: `${payload.recipientName || "A student"} ${outcome} your exchange request${payload.skillName ? ` about ${payload.skillName}` : ""}.\n\nView your requests: ${baseUrl}/requests`,
+    };
+  }
+  if (row.notification_type === "new_message") {
+    return {
+      subject: `${payload.senderName || "A student"} sent you a SkillSwap message`,
+      text: `${payload.senderName || "A student"} sent you a new message in SkillSwap. Sign in to view it: ${baseUrl}/messages`,
+    };
+  }
   const date = new Date(payload.startsAt);
   const startsText = Number.isFinite(date.getTime()) ? `${date.toISOString().slice(0, 16).replace("T", " ")} UTC` : "the scheduled time";
   return {

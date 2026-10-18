@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import type { PublicUser } from "../auth/types";
 
@@ -9,6 +9,54 @@ const links = [
   { href: "/students", label: "Student rankings" },
   { href: "/messages", label: "Messages" }, { href: "/learning-rooms", label: "Learning rooms" },
 ];
+
+type NotificationItem = { id: string; title: string; body: string; targetPath: "/requests" | "/messages"; createdAt: string; readAt: string | null };
+
+function NotificationCenter() {
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = () => void fetch("/api/notifications", { credentials: "include" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ notifications?: NotificationItem[]; unreadCount?: number }> : null)
+      .then((payload) => { if (active && payload) { setItems(payload.notifications || []); setUnread(payload.unreadCount || 0); } })
+      .catch(() => {});
+    load();
+    const timer = window.setInterval(load, 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  const markRead = async (item: NotificationItem) => {
+    if (!item.readAt) {
+      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, readAt: new Date().toISOString() } : entry));
+      setUnread((count) => Math.max(0, count - 1));
+      void fetch(`/api/notifications/${encodeURIComponent(item.id)}/read`, { method: "POST", credentials: "include" }).catch(() => {});
+    }
+    window.location.href = item.targetPath;
+  };
+
+  const markAllRead = () => {
+    setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+    setUnread(0);
+    void fetch("/api/notifications/read-all", { method: "POST", credentials: "include" }).catch(() => {});
+  };
+
+  return <div className="relative ml-auto sm:ml-0">
+    <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} className="relative inline-flex min-h-10 items-center gap-2 rounded-lg border border-ink/15 bg-white px-3 text-sm font-semibold text-ink hover:bg-paper focus-visible:outline-2 focus-visible:outline-forest">
+      <span aria-hidden="true">🔔</span><span>Notifications</span>{unread > 0 && <span className="grid min-w-5 place-items-center rounded-full bg-red-700 px-1.5 py-0.5 text-[11px] text-white">{unread > 99 ? "99+" : unread}</span>}
+    </button>
+    {open && <section aria-label="Notifications" className="absolute right-0 top-12 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-xl">
+      <div className="flex items-center justify-between border-b border-ink/8 px-4 py-3"><h2 className="text-sm font-semibold">Notifications</h2>{unread > 0 && <button type="button" onClick={markAllRead} className="text-xs font-semibold text-forest underline">Mark all read</button>}</div>
+      <div className="max-h-80 overflow-y-auto">
+        {items.length === 0 ? <p className="px-4 py-6 text-sm text-slate-600">You’re all caught up.</p> : items.map((item) => <button type="button" key={item.id} onClick={() => void markRead(item)} className={`block w-full border-b border-ink/5 px-4 py-3 text-left hover:bg-paper ${item.readAt ? "" : "bg-emerald-50/70"}`}>
+          <span className="block text-sm font-semibold text-ink">{item.title}</span><span className="mt-1 block text-xs text-slate-600">{item.body}</span><time className="mt-1 block text-[11px] text-slate-500">{new Date(item.createdAt + (item.createdAt.endsWith("Z") ? "" : "Z")).toLocaleString()}</time>
+        </button>)}
+      </div>
+    </section>}
+  </div>;
+}
 
 export function WorkspaceShell({ user, title, eyebrow, description, children, onLogout, loggingOut, logoutError }: {
   user: PublicUser; title: string; eyebrow: string; description: string; children: ReactNode;
@@ -45,6 +93,7 @@ export function WorkspaceShell({ user, title, eyebrow, description, children, on
             <div className="mt-2 flex items-center justify-between border-t border-ink/8 pt-3 sm:hidden"><span className="text-sm text-slate-600">{user.fullName}</span><button type="button" onClick={onLogout} disabled={loggingOut} className="min-h-10 rounded-lg border border-ink/15 px-4 text-sm font-semibold text-ink disabled:opacity-60">{loggingOut ? "Signing out…" : "Sign out"}</button></div>
           </div>
         </nav>
+        <div className="mx-auto flex max-w-7xl justify-end px-4 py-2 sm:px-7 lg:px-10"><NotificationCenter /></div>
       </header>
       {logoutError && <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800">{logoutError}</p>}
       <div className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-7 sm:pt-10 lg:px-10 lg:pt-12">

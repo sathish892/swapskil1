@@ -3,6 +3,7 @@ import { Router } from "express";
 import { avatarDirectory } from "./profile-skills.js";
 import { requireAuth } from "./auth.js";
 import { dispatchEmailNotifications, queueEmail } from "./email-notifications.js";
+import { createNotification } from "./notifications.js";
 
 const LEVELS = new Set(["Beginner", "Intermediate", "Advanced"]);
 const CATEGORIES = new Set(["Technology", "Design", "Creative arts", "Business", "Languages", "Science", "Education", "Wellness", "Music", "Other"]);
@@ -222,6 +223,7 @@ export function createExploreRouter(database) {
       database.prepare("INSERT INTO exchange_requests (id, sender_user_id, recipient_user_id, skill_id) VALUES (?, ?, ?, ?)")
         .run(id, req.user.id, recipientId, skillId);
       const senderName = database.prepare("SELECT full_name FROM users WHERE id = ?").get(req.user.id)?.full_name || "A student";
+      createNotification(database, { recipientUserId: recipientId, actorUserId: req.user.id, type: "exchange_request", title: `${senderName} sent you a request`, body: `About ${targetSkill.name}`, targetPath: "/requests", referenceId: id });
       queueEmail(database, { recipientUserId: recipientId, type: "exchange_request", referenceId: id, payload: { senderName, skillName: targetSkill.name } });
       database.exec("COMMIT;");
       void dispatchEmailNotifications(database);
@@ -289,7 +291,16 @@ export function createExploreRouter(database) {
           return res.status(409).json({ error: "This request has already been decided." });
         }
       }
+      const skillName = database.prepare("SELECT name FROM skills WHERE id = ?").get(existing.skill_id)?.name || "your skill exchange";
+      const recipientName = database.prepare("SELECT full_name FROM users WHERE id = ?").get(req.user.id)?.full_name || "A student";
+      createNotification(database, {
+        recipientUserId: existing.sender_user_id, actorUserId: req.user.id, type: "request_update",
+        title: `${recipientName} ${status} your request`, body: `About ${skillName}`,
+        targetPath: "/requests", referenceId: req.params.id,
+      });
+      queueEmail(database, { recipientUserId: existing.sender_user_id, type: "request_update", referenceId: req.params.id, payload: { recipientName, status, skillName } });
       database.exec("COMMIT;");
+      void dispatchEmailNotifications(database);
       return res.json({ request: { id: req.params.id, status, ...(learningSessionId ? { learningSessionId } : {}) } });
     } catch (error) {
       try { database.exec("ROLLBACK;"); } catch { /* transaction may already be closed */ }
