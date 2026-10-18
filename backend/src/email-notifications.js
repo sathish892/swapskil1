@@ -27,6 +27,42 @@ function getTransporter() {
   return { client: transporter, from };
 }
 
+function getEmailProvider() {
+  const from = process.env.EMAIL_FROM;
+  const brevoApiKey = process.env.BREVO_API_KEY;
+  if (brevoApiKey && from) return { kind: "brevo", apiKey: brevoApiKey, from };
+  const smtp = getTransporter();
+  return smtp ? { kind: "smtp", ...smtp } : null;
+}
+
+function parseSender(from) {
+  const match = from.match(/^\s*(.*?)\s*<([^<>\s]+@[^<>\s]+)>\s*$/);
+  if (match) return { name: match[1].replace(/^['"]|['"]$/g, "").trim() || "SkillSwap", email: match[2] };
+  return { name: "SkillSwap", email: from.trim() };
+}
+
+async function sendNotificationEmail(provider, to, message) {
+  if (provider.kind === "smtp") {
+    await provider.client.sendMail({ from: provider.from, to, subject: message.subject, text: message.text });
+    return;
+  }
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": provider.apiKey, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      sender: parseSender(provider.from),
+      to: [{ email: to }],
+      subject: message.subject,
+      textContent: message.text,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(`Brevo email API returned ${response.status}${details ? `: ${details.slice(0, 300)}` : ""}`);
+  }
+}
+
 export function queueEmail(database, { recipientUserId, type, referenceId, scheduleKey = "", payload = {} }) {
   database.prepare(`
     INSERT OR IGNORE INTO email_notification_queue
@@ -99,7 +135,7 @@ export async function dispatchEmailNotifications(database) {
   try {
     try { queueUpcomingReminders(database); }
     catch (error) { console.error("Could not queue session reminders:", error.message); }
-    const mail = getTransporter();
+    const mail = getEmailProvider();
     if (!mail) return;
 
     const pending = database.prepare(`
@@ -119,7 +155,7 @@ export async function dispatchEmailNotifications(database) {
           }
         }
         const message = emailContent(row, baseUrl);
-        await mail.client.sendMail({ from: mail.from, to: row.email, subject: message.subject, text: message.text });
+        await sendNotificationEmail(mail, row.email, message);
         database.prepare("UPDATE email_notification_queue SET sent_at = CURRENT_TIMESTAMP, last_error = '' WHERE id = ? AND sent_at IS NULL").run(row.id);
       } catch (error) {
         database.prepare("UPDATE email_notification_queue SET attempts = attempts + 1, last_error = ? WHERE id = ? AND sent_at IS NULL")
