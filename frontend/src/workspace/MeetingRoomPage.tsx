@@ -166,8 +166,11 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   const connectSignaling = (iceServers: RTCIceServer[]) => {
     if (shouldLeaveRef.current) return;
     closePeers();
-    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(scheme + "//" + window.location.host + (openRoom ? "/api/open-learning-rooms/" + encodeURIComponent(openRoomId) : "/api/meetings/" + encodeURIComponent(sessionId)) + "/signaling");
+    const signalingPath = (openRoom ? "/api/open-learning-rooms/" + encodeURIComponent(openRoomId) : "/api/meetings/" + encodeURIComponent(sessionId)) + "/signaling";
+    const signalingOrigin = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+    const signalingUrl = new URL(signalingPath, signalingOrigin);
+    signalingUrl.protocol = signalingUrl.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(signalingUrl);
     socketRef.current = socket; setConnection("Connecting to the learning room…");
     socket.onopen = () => { retryRef.current = 0; setConnection("In the room; waiting for participants…"); };
     socket.onmessage = (event) => {
