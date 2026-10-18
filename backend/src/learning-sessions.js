@@ -15,7 +15,7 @@ function runInTransaction(database, operation) {
     throw error;
   }
 }
-const hasAccess = (database, sessionId, userId) => database.prepare(
+export const hasAccess = (database, sessionId, userId) => database.prepare(
   "SELECT 1 FROM learning_session_participants WHERE session_id = ? AND user_id = ?",
 ).get(sessionId, userId);
 
@@ -167,4 +167,4 @@ export function createLearningSessionsRouter(database) {
   return router;
 }
 
-export { hasAccess, meetingStatus };
+export { meetingStatus };

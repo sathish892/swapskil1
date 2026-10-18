@@ -163,60 +163,70 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
     catch { setError("Couldn’t start a participant’s video connection. Check the network and try again."); }
   };
 
-  const connectSignaling = (iceServers: RTCIceServer[]) => {
+  const connectSignaling = async (iceServers: RTCIceServer[]) => {
     if (shouldLeaveRef.current) return;
     closePeers();
     const signalingPath = (openRoom ? "/api/open-learning-rooms/" + encodeURIComponent(openRoomId) : "/api/meetings/" + encodeURIComponent(sessionId)) + "/signaling";
-    const signalingOrigin = import.meta.env.VITE_API_BASE_URL || window.location.origin;
-    const signalingUrl = new URL(signalingPath, signalingOrigin);
-    signalingUrl.protocol = signalingUrl.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(signalingUrl);
-    socketRef.current = socket; setConnection("Connecting to the learning room…");
-    socket.onopen = () => { retryRef.current = 0; setConnection("In the room; waiting for participants…"); };
-    socket.onmessage = (event) => {
-      let message: Signal;
-      try { message = JSON.parse(String(event.data)) as Signal; } catch { setError("The meeting server sent an invalid response."); return; }
-      if (message.type === "joined") {
-        void loadChatHistory().catch(() => {});
-        const others = message.participants || [];
-        setConnection(others.length ? `Connecting to ${others.length} participant${others.length === 1 ? "" : "s"}…` : "Room is open; waiting for learners to join…");
-        for (const other of others) {
-          createPeer(other.id, other.fullName);
-          if (user.id.localeCompare(other.id) < 0) void negotiate(other.id, other.fullName);
-        }
-      } else if (message.type === "peer_joined" && message.participant) {
-        createPeer(message.participant.id, message.participant.fullName);
-        if (user.id.localeCompare(message.participant.id) < 0) void negotiate(message.participant.id, message.participant.fullName);
-      } else if (message.type === "offer" && message.from && message.payload) {
-        const peer = createPeer(message.from, message.fromName || "Participant");
-        void (async () => { try { await peer.setRemoteDescription(new RTCSessionDescription(message.payload as RTCSessionDescriptionInit)); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); sendSignal("answer", message.from!, peer.localDescription!); } catch { setError("Couldn’t connect to a participant. Rejoin the room and try again."); } })();
-      } else if (message.type === "answer" && message.from && message.payload) {
-        void peersRef.current.get(message.from)?.setRemoteDescription(new RTCSessionDescription(message.payload as RTCSessionDescriptionInit)).catch(() => setError("Couldn’t complete a participant’s video connection."));
-      } else if (message.type === "ice" && message.from && message.payload) {
-        void peersRef.current.get(message.from)?.addIceCandidate(new RTCIceCandidate(message.payload as RTCIceCandidateInit)).catch(() => {});
-      } else if (message.type === "peer_left" && message.participantId) {
-        peersRef.current.get(message.participantId)?.close(); peersRef.current.delete(message.participantId);
-        setRemoteStreams((streams) => { const next = { ...streams }; delete next[message.participantId!]; return next; });
-        setConnectedPeers((peers) => peers.filter((id) => id !== message.participantId));
-        setConnection("A participant left the room.");
-      } else if (message.type === "chat" && message.chatMessage) {
-        setChatMessages((current) => current.some((item) => item.id === message.chatMessage!.id) ? current : [...current, message.chatMessage!].slice(-100));
-      } else if (message.type === "chat_error") setChatError(message.message || "Couldn’t send your message.");
-      else if (message.type === "error") setError(message.message || "Meeting signaling error.");
-      else if (message.type === "replaced") { shouldLeaveRef.current = true; setError("This account joined the room in another tab."); for (const track of localStreamRef.current?.getTracks() || []) track.stop(); localStreamRef.current = null; setJoined(false); closePeers(); }
-    };
-    socket.onerror = () => setConnection("Room signaling connection interrupted.");
-    socket.onclose = (event) => {
-      if (socketRef.current !== socket) return;
-      socketRef.current = null;
-      if (shouldLeaveRef.current) return;
-      closePeers();
-      if ([4401, 4002, 4409].includes(event.code)) { setError(event.code === 4401 ? "Your sign-in session expired. Sign in again to rejoin." : event.code === 4409 ? "This room was cancelled, completed, or has ended." : "This learning room is full (8 participants maximum)."); setConnection("Disconnected"); return; }
-      const attempt = retryRef.current + 1; retryRef.current = attempt;
-      if (attempt > 5) { setError("Couldn’t reconnect to the room. Check your network and rejoin."); setConnection("Disconnected"); return; }
-      setConnection("Reconnecting to the room…");
-      retryTimerRef.current = window.setTimeout(() => connectSignaling(iceServers), Math.min(1000 * 2 ** (attempt - 1), 10_000));
-    };
+    const ticketPath = signalingPath.replace(/\/signaling$/, "/signaling-ticket");
+    try {
+      const ticketResponse = await fetch(ticketPath, { method: "POST", credentials: "include" });
+      const ticketPayload = await readApi<{ ticket?: string; error?: string }>(ticketResponse);
+      if (!ticketResponse.ok || !ticketPayload.ticket) throw new Error(ticketPayload.error || "Couldn’t authorize the meeting connection. Rejoin and try again.");
+      const localDevelopment = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+      const signalingOrigin = import.meta.env.VITE_API_BASE_URL || (localDevelopment ? window.location.origin : "https://swapskil1-3.onrender.com");
+      const signalingUrl = new URL(signalingPath, signalingOrigin);
+      signalingUrl.protocol = signalingUrl.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(signalingUrl, ["skillswap", ticketPayload.ticket]);
+      socketRef.current = socket; setConnection("Connecting to the learning room…");
+      socket.onopen = () => { retryRef.current = 0; setConnection("In the room; waiting for participants…"); };
+      socket.onmessage = (event) => {
+        let message: Signal;
+        try { message = JSON.parse(String(event.data)) as Signal; } catch { setError("The meeting server sent an invalid response."); return; }
+        if (message.type === "joined") {
+          void loadChatHistory().catch(() => {});
+          const others = message.participants || [];
+          setConnection(others.length ? `Connecting to ${others.length} participant${others.length === 1 ? "" : "s"}…` : "Room is open; waiting for learners to join…");
+          for (const other of others) {
+            createPeer(other.id, other.fullName);
+            if (user.id.localeCompare(other.id) < 0) void negotiate(other.id, other.fullName);
+          }
+        } else if (message.type === "peer_joined" && message.participant) {
+          createPeer(message.participant.id, message.participant.fullName);
+          if (user.id.localeCompare(message.participant.id) < 0) void negotiate(message.participant.id, message.participant.fullName);
+        } else if (message.type === "offer" && message.from && message.payload) {
+          const peer = createPeer(message.from, message.fromName || "Participant");
+          void (async () => { try { await peer.setRemoteDescription(new RTCSessionDescription(message.payload as RTCSessionDescriptionInit)); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); sendSignal("answer", message.from!, peer.localDescription!); } catch { setError("Couldn’t connect to a participant. Rejoin the room and try again."); } })();
+        } else if (message.type === "answer" && message.from && message.payload) {
+          void peersRef.current.get(message.from)?.setRemoteDescription(new RTCSessionDescription(message.payload as RTCSessionDescriptionInit)).catch(() => setError("Couldn’t complete a participant’s video connection."));
+        } else if (message.type === "ice" && message.from && message.payload) {
+          void peersRef.current.get(message.from)?.addIceCandidate(new RTCIceCandidate(message.payload as RTCIceCandidateInit)).catch(() => {});
+        } else if (message.type === "peer_left" && message.participantId) {
+          peersRef.current.get(message.participantId)?.close(); peersRef.current.delete(message.participantId);
+          setRemoteStreams((streams) => { const next = { ...streams }; delete next[message.participantId!]; return next; });
+          setConnectedPeers((peers) => peers.filter((id) => id !== message.participantId));
+          setConnection("A participant left the room.");
+        } else if (message.type === "chat" && message.chatMessage) {
+          setChatMessages((current) => current.some((item) => item.id === message.chatMessage!.id) ? current : [...current, message.chatMessage!].slice(-100));
+        } else if (message.type === "chat_error") setChatError(message.message || "Couldn’t send your message.");
+        else if (message.type === "error") setError(message.message || "Meeting signaling error.");
+        else if (message.type === "replaced") { shouldLeaveRef.current = true; setError("This account joined the room in another tab."); for (const track of localStreamRef.current?.getTracks() || []) track.stop(); localStreamRef.current = null; setJoined(false); closePeers(); }
+      };
+      socket.onerror = () => setConnection("Room signaling connection interrupted.");
+      socket.onclose = (event) => {
+        if (socketRef.current !== socket) return;
+        socketRef.current = null;
+        if (shouldLeaveRef.current) return;
+        closePeers();
+        if ([4401, 4002, 4409].includes(event.code)) { setError(event.code === 4401 ? "Your sign-in session expired. Sign in again to rejoin." : event.code === 4409 ? "This room was cancelled, completed, or has ended." : "This learning room is full (8 participants maximum)."); setConnection("Disconnected"); return; }
+        const attempt = retryRef.current + 1; retryRef.current = attempt;
+        if (attempt > 5) { setError("Couldn’t reconnect to the room. Check your network and rejoin."); setConnection("Disconnected"); return; }
+        setConnection("Reconnecting to the room…");
+        retryTimerRef.current = window.setTimeout(() => { void connectSignaling(iceServers); }, Math.min(1000 * 2 ** (attempt - 1), 10_000));
+      };
+    } catch (cause) {
+      setConnection("Disconnected");
+      setError(cause instanceof Error ? cause.message : "Couldn’t authorize the meeting connection. Rejoin and try again.");
+    }
   };
 
   const sendChatMessage = (event: FormEvent<HTMLFormElement>) => {

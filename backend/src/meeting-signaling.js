@@ -1,9 +1,9 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { authenticateRequest } from "./auth.js";
 import { hasAccess } from "./learning-sessions.js";
 import { hasOpenRoomAccess } from "./open-learning-rooms.js";
 import { getConfiguredOrigins, isDevelopmentFrontendOrigin } from "./origin-policy.js";
 import { persistMeetingMessage } from "./meeting-collaboration.js";
+import { consumeMeetingTicket, getActiveMeetingTicketUser } from "./meeting-tickets.js";
 
 const send = (socket, data) => {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(data));
@@ -22,7 +22,10 @@ export function attachMeetingSignaling(server, database) {
   const originAllowed = (request) => {
     const origin = request.headers.origin;
     if (!origin) return false;
-    const configured = getConfiguredOrigins();
+    const configured = [
+      ...(process.env.NODE_ENV === "production" ? ["https://swapskil1.vercel.app", "https://swapskil1-2uc5.vercel.app"] : []),
+      ...getConfiguredOrigins(),
+    ];
     if (configured.includes(origin) || isDevelopmentFrontendOrigin(origin)) return true;
     if (configured.length) return false;
     try { return new URL(origin).host === request.headers.host; } catch { return false; }
@@ -36,9 +39,9 @@ export function attachMeetingSignaling(server, database) {
       const end = start + (session?.duration_minutes || 0) * 60_000;
       const expired = !session || (isOpenRoom ? session.status !== "open" : session.cancelled_at || session.status === "completed") || !Number.isFinite(start) || Date.now() > end;
       for (const participant of room.values()) {
-        let authenticated = null;
-        try { authenticated = authenticateRequest(database, participant.request); } catch { authenticated = null; }
-        if (expired || !authenticated || authenticated.user.id !== participant.userId) participant.socket.close(expired ? 4409 : 4401, expired ? "Meeting is no longer available" : "Session expired");
+        const authenticated = getActiveMeetingTicketUser(database, participant.ticket);
+        const stillMember = isOpenRoom ? hasOpenRoomAccess(database, roomId, participant.userId) : hasAccess(database, roomId, participant.userId);
+        if (expired || !authenticated || !stillMember) participant.socket.close(expired ? 4409 : 4401, expired ? "Meeting is no longer available" : "Session expired");
       }
     }
   }, 10_000);
@@ -55,10 +58,14 @@ export function attachMeetingSignaling(server, database) {
     let sessionId;
     try { sessionId = decodeURIComponent(match[1]); } catch { return rejectUpgrade(socket, 400, "Invalid session ID."); }
     if (!originAllowed(request)) return rejectUpgrade(socket, 403, "Origin is not allowed.");
-    let authenticated;
-    try { authenticated = authenticateRequest(database, request); } catch { return rejectUpgrade(socket, 401, "Authentication required."); }
-    if (!authenticated) return rejectUpgrade(socket, 401, "Authentication required.");
-    if (!(isOpenRoom ? hasOpenRoomAccess(database, sessionId, authenticated.user.id) : hasAccess(database, sessionId, authenticated.user.id))) return rejectUpgrade(socket, 403, "You are not a room participant.");
+    const offeredProtocols = (request.headers["sec-websocket-protocol"] || "").split(",").map((item) => item.trim());
+    const ticketValue = offeredProtocols[0] === "skillswap" ? offeredProtocols[1] : null;
+    const ticket = consumeMeetingTicket(ticketValue);
+    if (!ticket) return rejectUpgrade(socket, 401, "Meeting authorization expired. Please rejoin.");
+    if (ticket.resourceId !== sessionId || ticket.type !== (isOpenRoom ? "open-room" : "session")) return rejectUpgrade(socket, 403, "You are not authorized for this room.");
+    const authenticatedUser = getActiveMeetingTicketUser(database, ticket);
+    if (!authenticatedUser) return rejectUpgrade(socket, 401, "Authentication required.");
+    if (!(isOpenRoom ? hasOpenRoomAccess(database, sessionId, authenticatedUser.id) : hasAccess(database, sessionId, authenticatedUser.id))) return rejectUpgrade(socket, 403, "You are not a room participant.");
     const session = isOpenRoom ? openRoomQuery.get(sessionId) : sessionQuery.get(sessionId);
     if (!session || (isOpenRoom ? session.status !== "open" : session.cancelled_at || session.status === "completed") || !(session[isOpenRoom ? "starts_at" : "scheduled_at"])) return rejectUpgrade(socket, 409, "This meeting is unavailable.");
     const start = Date.parse(session[isOpenRoom ? "starts_at" : "scheduled_at"]); const end = start + session.duration_minutes * 60_000; const now = Date.now();
@@ -68,12 +75,12 @@ export function attachMeetingSignaling(server, database) {
       const roomKey = isOpenRoom ? "open:" + sessionId : sessionId;
       let room = rooms.get(roomKey);
       if (!room) { room = new Map(); rooms.set(roomKey, room); }
-      const existing = room.get(authenticated.user.id);
+      const existing = room.get(authenticatedUser.id);
       if (existing?.readyState === WebSocket.OPEN) {
         send(existing, { type: "replaced" }); existing.close(4001, "Reconnected from another tab");
       }
-      if (room.size >= 8 && !room.has(authenticated.user.id)) { ws.close(4002, "Learning room is full"); return; }
-      const participant = { socket: ws, userId: authenticated.user.id, fullName: authenticated.user.fullName, request, windowStarted: Date.now(), signalCount: 0 };
+      if (room.size >= 8 && !room.has(authenticatedUser.id)) { ws.close(4002, "Learning room is full"); return; }
+      const participant = { socket: ws, userId: authenticatedUser.id, fullName: authenticatedUser.fullName, ticket, windowStarted: Date.now(), signalCount: 0 };
       const existingParticipants = [...room.values()].filter((item) => item.userId !== participant.userId);
       room.set(participant.userId, participant);
       send(ws, { type: "joined", participants: existingParticipants.map((item) => ({ id: item.userId, fullName: item.fullName })) });
@@ -84,9 +91,9 @@ export function attachMeetingSignaling(server, database) {
         if (now - participant.windowStarted >= 10_000) { participant.windowStarted = now; participant.signalCount = 0; }
         participant.signalCount += 1;
         if (participant.signalCount > 100) { ws.close(1008, "Too many signaling messages"); return; }
-        let current;
-        try { current = authenticateRequest(database, request); } catch { current = null; }
-        if (!current || current.user.id !== participant.userId) { ws.close(4401, "Session expired"); return; }
+        const current = getActiveMeetingTicketUser(database, participant.ticket);
+        const stillMember = isOpenRoom ? hasOpenRoomAccess(database, sessionId, participant.userId) : hasAccess(database, sessionId, participant.userId);
+        if (!current || current.id !== participant.userId || !stillMember) { ws.close(4401, "Session expired"); return; }
         let message;
         try { message = JSON.parse(raw.toString()); } catch { send(ws, { type: "error", message: "Invalid signaling data." }); return; }
         if (message?.type === "chat") {
