@@ -173,7 +173,7 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
       const ticketPayload = await readApi<{ ticket?: string; error?: string }>(ticketResponse);
       if (!ticketResponse.ok || !ticketPayload.ticket) throw new Error(ticketPayload.error || "Couldn’t authorize the meeting connection. Rejoin and try again.");
       const localDevelopment = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-      const signalingOrigin = import.meta.env.VITE_API_BASE_URL || (localDevelopment ? window.location.origin : "https://swapskil1-3.onrender.com");
+      const signalingOrigin = import.meta.env.VITE_API_BASE_URL || (localDevelopment ? window.location.origin : "https://swapskil1-1.onrender.com");
       const signalingUrl = new URL(signalingPath, signalingOrigin);
       signalingUrl.protocol = signalingUrl.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(signalingUrl, ["skillswap", ticketPayload.ticket]);
