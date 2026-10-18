@@ -14,13 +14,13 @@ import { isDevelopmentFrontendOrigin } from "./origin-policy.js";
 export function createApp(database, options = {}) {
   const app = express();
   app.disable("x-powered-by");
-  const allowedOrigins = new Set(options.allowedOrigins ?? (
-    process.env.APP_ORIGIN
-      ? process.env.APP_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
-      : process.env.NODE_ENV === "production"
-        ? []
-        : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
-  ));
+  const configuredOrigins = process.env.APP_ORIGIN
+    ? process.env.APP_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
+    : [];
+  const defaultOrigins = process.env.NODE_ENV === "production"
+    ? ["https://swapskil1.vercel.app"]
+    : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];
+  const allowedOrigins = new Set(options.allowedOrigins ?? [...defaultOrigins, ...configuredOrigins]);
   const configuredRateLimit = Number.parseInt(process.env.AUTH_RATE_LIMIT || "10", 10);
   const configuredSessionHours = Number.parseInt(process.env.SESSION_TTL_HOURS || "168", 10);
   const rateLimitCount = options.rateLimitCount ?? (
