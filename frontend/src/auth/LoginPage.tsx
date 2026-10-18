@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { AuthField } from "./AuthField";
 import { AuthShell } from "./AuthShell";
+import { GoogleSignInButton } from "./GoogleSignInButton";
 import { EMAIL_PATTERN, getSafeReturnPath, responseError, type ApiError, type PublicUser } from "./types";
 
 export function LoginPage() {
@@ -10,6 +11,34 @@ export function LoginPage() {
   const [errors, setErrors] = useState<Partial<Record<"email" | "password", string>>>({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+
+  const signInWithGoogle = async (credential: string) => {
+    setGoogleSubmitting(true);
+    setFormError("");
+    try {
+      const response = await fetch("/api/auth/google", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const payload = await response.json() as ApiError & { user?: PublicUser };
+      if (!response.ok) {
+        setFormError(responseError(payload, "We couldn’t sign you in with Google. Please try again."));
+        return;
+      }
+      if (!payload.user || !["admin", "user"].includes(payload.user.role)) {
+        setFormError("We couldn’t confirm your Google sign-in. Please try again.");
+        return;
+      }
+      window.location.replace(payload.user.role === "admin" ? "/admin" : getSafeReturnPath());
+    } catch {
+      setFormError("Couldn’t connect to SkillSwap. Check your connection and try again.");
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -83,6 +112,10 @@ export function LoginPage() {
           {submitting ? "Signing in…" : "Log in"}
         </button>
       </form>
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-slate-200" /><span className="text-xs font-medium uppercase tracking-wide text-slate-500">or</span><span className="h-px flex-1 bg-slate-200" />
+      </div>
+      <GoogleSignInButton onCredential={signInWithGoogle} onError={setFormError} pending={googleSubmitting || submitting} />
       <p className="mt-6 text-center text-sm text-slate-600">
         New to SkillSwap? <a href="/register" className="rounded-sm font-semibold text-emerald-800 underline decoration-emerald-800/30 underline-offset-4 transition-colors hover:text-emerald-950 hover:decoration-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">Create an account</a>
       </p>

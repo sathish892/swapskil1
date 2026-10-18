@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { AuthField } from "./AuthField";
 import { AuthShell } from "./AuthShell";
-import { EMAIL_PATTERN, getSafeReturnPath, responseError, type ApiError } from "./types";
+import { GoogleSignInButton } from "./GoogleSignInButton";
+import { EMAIL_PATTERN, getSafeReturnPath, responseError, type ApiError, type PublicUser } from "./types";
 
 type RegistrationErrors = Partial<Record<"fullName" | "email" | "password" | "confirmPassword", string>>;
 
@@ -15,6 +16,34 @@ export function RegistrationPage() {
   const [errors, setErrors] = useState<RegistrationErrors>({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
+
+  const signUpWithGoogle = async (credential: string) => {
+    setGoogleSubmitting(true);
+    setFormError("");
+    try {
+      const response = await fetch("/api/auth/google", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const payload = await response.json() as ApiError & { user?: PublicUser };
+      if (!response.ok) {
+        setFormError(responseError(payload, "We couldn’t create your account with Google. Please try again."));
+        return;
+      }
+      if (!payload.user || !["admin", "user"].includes(payload.user.role)) {
+        setFormError("We couldn’t confirm your Google account. Please try again.");
+        return;
+      }
+      window.location.replace(payload.user.role === "admin" ? "/admin" : getSafeReturnPath());
+    } catch {
+      setFormError("Couldn’t connect to SkillSwap. Check your connection and try again.");
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -77,6 +106,10 @@ export function RegistrationPage() {
           {submitting ? "Creating account…" : "Create account"}
         </button>
       </form>
+      <div className="my-5 flex items-center gap-3" aria-hidden="true">
+        <span className="h-px flex-1 bg-slate-200" /><span className="text-xs font-medium uppercase tracking-wide text-slate-500">or</span><span className="h-px flex-1 bg-slate-200" />
+      </div>
+      <GoogleSignInButton onCredential={signUpWithGoogle} onError={setFormError} pending={googleSubmitting || submitting} />
       <p className="mt-6 text-center text-sm text-slate-600">
         Already have an account? <a href="/login" className="rounded-sm font-semibold text-emerald-800 underline decoration-emerald-800/30 underline-offset-4 transition-colors hover:text-emerald-950 hover:decoration-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">Log in</a>
       </p>

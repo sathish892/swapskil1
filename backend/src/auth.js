@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import argon2 from "argon2";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
+import { verifyGoogleCredential } from "./google-identity.js";
 
 export const SESSION_COOKIE_NAME = "skillswap.sid";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -156,6 +157,7 @@ export function createAuthRouter(database, {
   cookieSecure = false,
   sessionTtlMs = 7 * 24 * 60 * 60 * 1000,
   rateLimitCount = 10,
+  googleClientId = process.env.GOOGLE_CLIENT_ID || "",
 } = {}) {
   const router = Router();
   router.use((_request, response, next) => {
@@ -222,6 +224,72 @@ export function createAuthRouter(database, {
     const token = createSession(database, user.id, sessionTtlMs);
     setSessionCookie(response, token, cookieSecure, Math.floor(sessionTtlMs / 1000));
     return response.json({ user: publicUser(user) });
+  });
+
+  router.post("/google", createLimiter(rateLimitCount), async (request, response, next) => {
+    if (!googleClientId) return response.status(503).json({ error: "Google sign-in is not configured yet." });
+    const credential = request.body?.credential;
+    let identity;
+    try {
+      identity = await verifyGoogleCredential(credential, googleClientId);
+    } catch (error) {
+      const unavailable = error instanceof TypeError || error?.name === "TimeoutError" || /verification keys are unavailable/i.test(error?.message || "");
+      return response.status(unavailable ? 503 : 401).json({
+        error: unavailable ? "Google sign-in is temporarily unavailable. Please try again." : "Google sign-in could not be verified. Please try again.",
+      });
+    }
+
+    let transactionOpen = false;
+    try {
+      database.exec("BEGIN IMMEDIATE;");
+      transactionOpen = true;
+
+      let user = database.prepare(`SELECT u.id, u.full_name, u.email, u.role, u.status, u.created_at
+        FROM google_accounts g JOIN users u ON u.id = g.user_id WHERE g.subject = ?`).get(identity.subject);
+
+      if (user && user.status !== "active") {
+        database.exec("ROLLBACK;"); transactionOpen = false;
+        return response.status(403).json({ error: "This account is not available. Contact SkillSwap support." });
+      }
+
+      if (!user) {
+        user = database.prepare("SELECT id, full_name, email, role, status, created_at FROM users WHERE email = ?").get(identity.email);
+        if (user && user.status !== "active") {
+          database.exec("ROLLBACK;"); transactionOpen = false;
+          return response.status(403).json({ error: "This account is not available. Contact SkillSwap support." });
+        }
+
+        if (user) {
+          const emailDomain = identity.email.split("@")[1];
+          const googleAuthoritativelyOwnsEmail = emailDomain === "gmail.com" || Boolean(identity.hostedDomain && emailDomain === identity.hostedDomain);
+          if (!googleAuthoritativelyOwnsEmail) {
+            database.exec("ROLLBACK;"); transactionOpen = false;
+            return response.status(409).json({ error: "This email already has an account. Sign in with its password first." });
+          }
+          database.prepare("INSERT INTO google_accounts (subject, user_id) VALUES (?, ?)").run(identity.subject, user.id);
+        } else {
+          const userId = randomUUID();
+          const unusablePasswordHash = await argon2.hash(randomBytes(32).toString("base64url"), { type: argon2.argon2id });
+          database.prepare("INSERT INTO users (id, full_name, email, password_hash) VALUES (?, ?, ?, ?)")
+            .run(userId, identity.fullName, identity.email, unusablePasswordHash);
+          database.prepare("INSERT INTO google_accounts (subject, user_id) VALUES (?, ?)").run(identity.subject, userId);
+          user = database.prepare("SELECT id, full_name, email, role, status, created_at FROM users WHERE id = ?").get(userId);
+        }
+      }
+
+      const token = createSession(database, user.id, sessionTtlMs);
+      database.exec("COMMIT;"); transactionOpen = false;
+      setSessionCookie(response, token, cookieSecure, Math.floor(sessionTtlMs / 1000));
+      return response.json({ user: publicUser(user) });
+    } catch (error) {
+      if (transactionOpen) {
+        try { database.exec("ROLLBACK;"); } catch { /* transaction already rolled back */ }
+      }
+      if (/UNIQUE constraint failed: google_accounts\.(subject|user_id)/i.test(error.message)) {
+        return response.status(409).json({ error: "This Google account is already linked to another SkillSwap account." });
+      }
+      return next(error);
+    }
   });
 
   router.post("/logout", (request, response, next) => {

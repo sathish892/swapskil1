@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 12;
+const DATABASE_VERSION = 13;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -379,6 +379,17 @@ export function migrateDatabase(database) {
         CREATE INDEX idx_open_room_reviews_recipient_type ON open_room_reviews(recipient_id, rating_type, created_at);
         CREATE INDEX idx_open_room_reviews_room ON open_room_reviews(room_id);
         PRAGMA user_version = 12;
+      `);
+    }
+    if (currentVersion < 13) {
+      database.exec(`
+        CREATE TABLE google_accounts (
+          subject TEXT PRIMARY KEY CHECK (length(subject) BETWEEN 1 AND 255),
+          user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX idx_google_accounts_user ON google_accounts(user_id);
+        PRAGMA user_version = 13;
       `);
     }
     database.exec("COMMIT;");
