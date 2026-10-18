@@ -16,7 +16,7 @@ export function createApp(database, options = {}) {
   app.disable("x-powered-by");
   const configuredOrigins = getConfiguredOrigins();
   const defaultOrigins = process.env.NODE_ENV === "production"
-    ? ["https://swapskil1.vercel.app"]
+    ? ["https://swapskil1.vercel.app", "https://swapskil1-2uc5.vercel.app"]
     : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];
   const allowedOrigins = new Set(options.allowedOrigins ?? [...defaultOrigins, ...configuredOrigins]);
   const configuredRateLimit = Number.parseInt(process.env.AUTH_RATE_LIMIT || "10", 10);
