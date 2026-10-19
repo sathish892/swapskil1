@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /profile
+Disallow: /my-skills
+Disallow: /requests
+Disallow: /sessions
+Disallow: /messages
+Disallow: /learning-rooms
+Disallow: /roadmap
+
+Sitemap: https://swapskil1.vercel.app/sitemap.xml
