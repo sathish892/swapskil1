@@ -6,7 +6,7 @@ SkillSwap is a student skill-exchange application. The frontend is a React + Typ
 
 Set `DATABASE_URL` in the backend hosting environment to the **Session pooler** connection string from the Supabase project's **Connect** dialog. The password belongs only in that hosting secret; never put it in frontend variables or source control. On first startup, the backend creates the current schema, locks down the tables from Supabase's public API roles, and imports an existing local SQLite database if one is present. Later restarts use the Supabase database as the source of truth.
 
-If the Supabase schema is changed, update the versioned database migration before deploying. Keep periodic exports/backups of the free-tier database.
+If the Supabase schema is changed, update the versioned database migration before deploying.
 
 ## Production first-admin setup
 
@@ -46,15 +46,3 @@ Google sign-in and account creation use the Google Identity Services button. Goo
 4. Restart the local servers or redeploy the frontend and backend after setting the variables. If Google's consent screen is in testing mode, add the accounts that will test sign-in as test users.
 
 The client ID is public configuration and must match between frontend and backend. Do not put a Google client secret in frontend code or expose it in Vercel variables prefixed with `VITE_`.
-## Supabase backups
-
-`.github/workflows/supabase-backup.yml` exports the Supabase database every Monday at 03:17 UTC and when manually started from GitHub Actions. The dump is AES-256 encrypted before upload and retained as a GitHub Actions artifact for 90 days.
-
-To enable it, open the GitHub repository's **Settings → Secrets and variables → Actions** and add:
-
-- `SUPABASE_DB_URL`: the Supabase **Session pooler** connection URI, including the database password. Keep this value private.
-- `BACKUP_ENCRYPTION_PASSPHRASE`: a long, unique passphrase. Store it somewhere safe; the encrypted backups cannot be opened without it.
-
-Then open **Actions → Supabase database backup → Run workflow** to create the first backup. Download the artifact from that successful run and keep a separate copy. Artifacts expire after 90 days.
-
-To decrypt a downloaded backup, run `gpg --output skillswap.dump --decrypt skillswap-YYYY-MM-DD.dump.gpg` and enter the passphrase. Restore only when needed with `pg_restore --no-owner --no-privileges --dbname "$DATABASE_URL" skillswap.dump`.
