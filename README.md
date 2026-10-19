@@ -36,7 +36,7 @@ Google sign-in and account creation use the Google Identity Services button. Goo
    - Vercel frontend: `VITE_GOOGLE_CLIENT_ID`
    - Render backend: `GOOGLE_CLIENT_ID`
 3. For local development, copy the values from `frontend/.env.example` to `frontend/.env.local` and from `backend/.env.example` to `backend/.env`. Keep real environment files out of Git.
-4. To enable AI career roadmaps, set `OPENAI_API_KEY` in the backend environment (Render for production, `backend/.env` locally). The key must stay server-side; roadmap generation also uses OpenAI web search and may incur API charges.
+4. To enable free-tier AI career roadmaps, set `GROQ_API_KEY` in the backend environment (Render for production, `backend/.env` locally). Create a key at [Groq Console](https://console.groq.com/keys). Keep it server-side. The free tier has provider rate limits and can change; model requests use browser search for references.
 4. Restart the local servers or redeploy the frontend and backend after setting the variables. If Google's consent screen is in testing mode, add the accounts that will test sign-in as test users.
 
 The client ID is public configuration and must match between frontend and backend. Do not put a Google client secret in frontend code or expose it in Vercel variables prefixed with `VITE_`.
