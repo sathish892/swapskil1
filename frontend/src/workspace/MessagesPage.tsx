@@ -67,7 +67,11 @@ export function MessagesPage({ user, onLogout, loggingOut, logoutError }: { user
   useEffect(() => { void loadConversations().finally(() => setLoading(false)); }, []); // initial view
   useEffect(() => { setMessages([]); setHasMore(false); setBefore(null); if (selectedId) void loadMessages(selectedId); }, [selectedId, loadMessages]);
   useEffect(() => {
-    const timer = window.setInterval(() => { void loadConversations(true); if (selectedId) void loadMessages(selectedId, true); }, 5000);
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadConversations(true);
+      if (selectedId) void loadMessages(selectedId, true);
+    }, 10_000);
     return () => window.clearInterval(timer);
   }, [loadConversations, loadMessages, selectedId]);
 

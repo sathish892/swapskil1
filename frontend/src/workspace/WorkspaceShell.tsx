@@ -26,7 +26,7 @@ function NotificationCenter() {
       .then((payload) => { if (active && payload) { setItems(payload.notifications || []); setUnread(payload.unreadCount || 0); } })
       .catch(() => {});
     load();
-    const timer = window.setInterval(load, 30_000);
+    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 60_000);
     return () => { active = false; window.clearInterval(timer); };
   }, []);
 

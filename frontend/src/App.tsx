@@ -422,21 +422,8 @@ function App() {
       })
       .then(async (currentUser) => {
         setUser(currentUser);
-        if (!currentUser || currentUser.role !== "user") {
-          setProfileComplete(true);
-          setProfileReady(true);
-          return;
-        }
-        try {
-          const response = await fetch("/api/profile", { credentials: "include", signal: controller.signal });
-          const payload = await readApi<{ profile?: { profileComplete?: boolean } }>(response);
-          setProfileComplete(response.ok && payload.profile?.profileComplete === true);
-        } catch {
-          // Let users reach the app if profile status cannot be checked; the profile page reports its own load error.
-          setProfileComplete(true);
-        } finally {
-          if (!controller.signal.aborted) setProfileReady(true);
-        }
+        setProfileComplete(currentUser?.role !== "user" || currentUser.profileComplete === true);
+        setProfileReady(true);
       })
       .catch(() => {
         // React StrictMode aborts its first development-only effect run.

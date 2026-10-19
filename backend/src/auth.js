@@ -6,8 +6,10 @@ import { verifyGoogleCredential } from "./google-identity.js";
 
 export const SESSION_COOKIE_NAME = "skillswap.sid";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const authRefreshes = new Map();
 const SESSION_SELECT = `
-  SELECT u.id, u.full_name, u.email, u.role, u.created_at, s.token_hash
+  SELECT u.id, u.full_name, u.email, u.role, u.created_at, s.token_hash,
+    EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id AND p.profile_completed_at IS NOT NULL) AS profile_complete
   FROM sessions s
   JOIN users u ON u.id = s.user_id
   WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'
@@ -20,6 +22,7 @@ function publicUser(row) {
     email: row.email,
     role: row.role,
     createdAt: row.created_at,
+    ...(row.profile_complete === undefined ? {} : { profileComplete: Boolean(row.profile_complete) }),
   };
 }
 
@@ -131,10 +134,24 @@ export function requireAuth(database) {
       // the browser cookie so closing the tab does not end their session.
       const sessionTtlMs = request.app.locals.sessionTtlMs || 30 * 24 * 60 * 60 * 1000;
       const token = readSessionToken(request);
-      database.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
-        .run(Date.now() + sessionTtlMs, authenticated.tokenHash);
-      database.prepare("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_active_at IS NULL OR last_active_at < datetime('now', '-1 minute'))")
-        .run(authenticated.user.id);
+      // Authenticated pages can make several API requests at once. Refreshing
+      // the session and activity on every request added two serial Postgres
+      // round trips each time. Once per minute is enough to keep active
+      // sessions persistent and activity current.
+      const now = Date.now();
+      const lastRefresh = authRefreshes.get(authenticated.tokenHash) || 0;
+      if (now - lastRefresh >= 60_000) {
+        database.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
+          .run(now + sessionTtlMs, authenticated.tokenHash);
+        database.prepare("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_active_at IS NULL OR last_active_at < datetime('now', '-1 minute'))")
+          .run(authenticated.user.id);
+        authRefreshes.set(authenticated.tokenHash, now);
+        if (authRefreshes.size > 5_000) {
+          for (const [tokenHash, refreshedAt] of authRefreshes) {
+            if (now - refreshedAt > sessionTtlMs) authRefreshes.delete(tokenHash);
+          }
+        }
+      }
       setSessionCookie(response, token, request.app.locals.cookieSecure, Math.floor(sessionTtlMs / 1000));
       request.user = authenticated.user;
       request.sessionTokenHash = authenticated.tokenHash;

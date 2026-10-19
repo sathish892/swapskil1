@@ -4,6 +4,7 @@ export type PublicUser = {
   email: string;
   role: "user" | "admin";
   createdAt: string;
+  profileComplete?: boolean;
 };
 
 export type ApiError = {

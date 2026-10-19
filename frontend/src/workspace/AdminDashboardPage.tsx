@@ -75,7 +75,7 @@ export function AdminDashboardPage({ user, onLogout, loggingOut, logoutError }: 
       if (query) params.set("q", query); if (statusFilter) params.set("status", statusFilter); if (roleFilter) params.set("role", roleFilter);
       void api<RecordData>(`/api/admin/users?${params}`).then(setData).catch(() => {});
     };
-    const timer = window.setInterval(refreshUsers, 15_000);
+    const timer = window.setInterval(() => { if (!document.hidden) refreshUsers(); }, 60_000);
     return () => window.clearInterval(timer);
   }, [view, query, statusFilter, roleFilter, page]);
   useEffect(() => { window.history.replaceState({}, "", `/admin?view=${view}`); }, [view]);
@@ -211,8 +211,9 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
   useEffect(() => {
     if (!details) return;
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       void api<RecordData>(`/api/admin/users/${encodeURIComponent(id)}`).then(setDetails).catch(() => {});
-    }, 15_000);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [details, id]);
   const action = (kind: string, prompt: string, nextRole?: string) => {
