@@ -3,7 +3,7 @@ import type { PublicUser } from "../auth/types";
 import { readApi, type FieldErrors, type Profile } from "./types";
 import { WorkspaceInput, WorkspaceShell } from "./WorkspaceShell";
 
-type ProfileForm = Omit<Profile, "id" | "updatedAt" | "interests" | "avatarUrl"> & { interestsText: string };
+type ProfileForm = Omit<Profile, "id" | "updatedAt" | "interests" | "avatarUrl" | "profileComplete"> & { interestsText: string };
 type ProfilePayload = { profile: Profile };
 const blankForm: ProfileForm = { fullName: "", bio: "", institution: "", department: "", location: "", interestsText: "", learningSkillsPublic: false };
 
@@ -23,7 +23,9 @@ function validate(form: ProfileForm): FieldErrors {
   const interests = form.interestsText.split(",").map((item) => item.trim()).filter(Boolean);
   if (!form.fullName.trim()) errors.fullName = "Enter your full name.";
   else if (Array.from(form.fullName.trim()).length > 100) errors.fullName = "Use 100 characters or fewer.";
-  if (Array.from(form.bio.trim()).length > 500) errors.bio = "Use 500 characters or fewer.";
+  if (!form.bio.trim()) errors.bio = "Add a short bio to complete your profile.";
+  else if (Array.from(form.bio.trim()).length < 10) errors.bio = "Use at least 10 characters for your bio.";
+  else if (Array.from(form.bio.trim()).length > 500) errors.bio = "Use 500 characters or fewer.";
   if (Array.from(form.institution.trim()).length > 150) errors.institution = "Use 150 characters or fewer.";
   if (Array.from(form.department.trim()).length > 100) errors.department = "Use 100 characters or fewer.";
   if (Array.from(form.location.trim()).length > 100) errors.location = "Use 100 characters or fewer.";
@@ -55,6 +57,7 @@ export function ProfilePage({ user, onLogout, loggingOut, logoutError }: {
         if (!response.ok || !payload.profile) throw new Error(payload.error || "Couldn’t load your profile.");
         setSavedProfile(payload.profile);
         setForm(formFromProfile(payload.profile));
+        setEditing(!payload.profile.profileComplete);
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Couldn’t load your profile.");
@@ -108,7 +111,9 @@ export function ProfilePage({ user, onLogout, loggingOut, logoutError }: {
         setErrors(payload.errors ?? {});
         throw new Error(payload.error || "Couldn’t save your changes.");
       }
+      const completingFirstProfile = !savedProfile?.profileComplete;
       setSavedProfile(payload.profile); setForm(formFromProfile(payload.profile)); setSuccess("Your profile has been saved."); setEditing(false);
+      if (completingFirstProfile && payload.profile.profileComplete) window.location.replace("/account");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Couldn’t save your changes.");
     } finally { setSaving(false); }
@@ -146,13 +151,13 @@ export function ProfilePage({ user, onLogout, loggingOut, logoutError }: {
           <p className="mt-2 text-center text-sm leading-6 text-slate-500">Add a clear photo so other students can recognize you. PNG, JPEG, or WebP under 2 MB.</p>
           <div className="mt-7 rounded-2xl bg-paper p-4 text-sm text-slate-600">
             <p className="font-semibold text-ink">Profile checklist</p>
-            <p className="mt-2 leading-6">Add a short bio and a few interests so other students know what you enjoy.</p>
+            <p className="mt-2 leading-6">Add a short bio (at least 10 characters) to complete your profile. You can add your institution, field, location, and interests too.</p>
           </div>
         </aside>
         <section className="rounded-3xl border border-ink/10 bg-white p-5 shadow-sm sm:p-8">
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="sm:col-span-2"><WorkspaceInput id="profile-full-name" label="Full name" value={form.fullName} onChange={(value) => update("fullName", value)} error={errors.fullName} maxLength={100} required /></div>
-            <div className="sm:col-span-2"><WorkspaceInput id="profile-bio" label="Short bio" value={form.bio} onChange={(value) => update("bio", value)} error={errors.bio} maxLength={500} placeholder="A little about what you enjoy learning or sharing" multiline /></div>
+            <div className="sm:col-span-2"><WorkspaceInput id="profile-bio" label="Short bio" value={form.bio} onChange={(value) => update("bio", value)} error={errors.bio} maxLength={500} placeholder="A little about what you enjoy learning or sharing" multiline required /></div>
             <WorkspaceInput id="profile-institution" label="College or institution (optional)" value={form.institution} onChange={(value) => update("institution", value)} error={errors.institution} maxLength={150} placeholder="Your school or institution" />
             <WorkspaceInput id="profile-department" label="Department or field (optional)" value={form.department} onChange={(value) => update("department", value)} error={errors.department} maxLength={100} placeholder="For example, computer science" />
             <WorkspaceInput id="profile-location" label="Location (optional)" value={form.location} onChange={(value) => update("location", value)} error={errors.location} maxLength={100} placeholder="City or region" />

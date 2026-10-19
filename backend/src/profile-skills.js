@@ -30,7 +30,9 @@ function profileInput(body) {
 
   if (!fullName) errors.fullName = "Enter your full name.";
   else if (Array.from(fullName).length > 100) errors.fullName = "Use 100 characters or fewer.";
-  if (Array.from(bio).length > 500) errors.bio = "Use 500 characters or fewer.";
+  if (!bio) errors.bio = "Add a short bio to complete your profile.";
+  else if (Array.from(bio).length < 10) errors.bio = "Use at least 10 characters for your bio.";
+  else if (Array.from(bio).length > 500) errors.bio = "Use 500 characters or fewer.";
   if (Array.from(institution).length > 150) errors.institution = "Use 150 characters or fewer.";
   if (Array.from(department).length > 100) errors.department = "Use 100 characters or fewer.";
   if (Array.from(location).length > 100) errors.location = "Use 100 characters or fewer.";
@@ -69,7 +71,7 @@ function isPlainObject(value) {
 
 function publicProfile(database, userId) {
   const row = database.prepare(`
-    SELECT u.id, u.full_name, p.bio, p.institution, p.department, p.location, p.interests, p.learning_skills_public, p.avatar_url, p.updated_at
+    SELECT u.id, u.full_name, p.bio, p.institution, p.department, p.location, p.interests, p.learning_skills_public, p.avatar_url, p.updated_at, p.profile_completed_at
     FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?
   `).get(userId);
   if (!row) return null;
@@ -84,6 +86,7 @@ function publicProfile(database, userId) {
     learningSkillsPublic: Boolean(row.learning_skills_public),
     avatarUrl: row.avatar_url || "",
     updatedAt: row.updated_at,
+    profileComplete: Boolean(row.profile_completed_at),
   };
 }
 
@@ -121,11 +124,12 @@ export function createProfileSkillsRouter(database) {
     if (Object.keys(errors).length) return response.status(400).json({ error: "Check the highlighted fields.", errors });
     try {
       const updateProfile = database.prepare(`
-        INSERT INTO profiles (user_id, bio, institution, department, location, interests, learning_skills_public, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO profiles (user_id, bio, institution, department, location, interests, learning_skills_public, updated_at, profile_completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET bio = excluded.bio, institution = excluded.institution,
           department = excluded.department, location = excluded.location, interests = excluded.interests,
-          learning_skills_public = excluded.learning_skills_public, updated_at = CURRENT_TIMESTAMP
+          learning_skills_public = excluded.learning_skills_public, updated_at = CURRENT_TIMESTAMP,
+          profile_completed_at = COALESCE(profiles.profile_completed_at, CURRENT_TIMESTAMP)
       `);
       database.exec("BEGIN IMMEDIATE;");
       database.prepare("UPDATE users SET full_name = ? WHERE id = ?").run(values.fullName, request.user.id);

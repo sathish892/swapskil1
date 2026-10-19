@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 14;
+const DATABASE_VERSION = 15;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -426,6 +426,14 @@ export function migrateDatabase(database) {
         ALTER TABLE email_notification_queue_v14 RENAME TO email_notification_queue;
         CREATE INDEX idx_email_notification_pending ON email_notification_queue(sent_at, attempts, created_at);
         PRAGMA user_version = 14;
+      `);
+    }
+    if (currentVersion < 15) {
+      database.exec(`
+        ALTER TABLE profiles ADD COLUMN profile_completed_at TEXT;
+        UPDATE profiles SET profile_completed_at = updated_at
+        WHERE trim(bio) <> '' OR trim(institution) <> '' OR trim(department) <> '' OR trim(location) <> '' OR interests <> '[]';
+        PRAGMA user_version = 15;
       `);
     }
     database.exec("COMMIT;");

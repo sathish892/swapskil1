@@ -186,6 +186,11 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
   const [details, setDetails] = useState<RecordData | null>(null);
   const [detailsError, setDetailsError] = useState("");
   const id = String(account.id); const status = String(account.status); const role = String(account.role);
+  const activity = (details?.activity || {}) as RecordData;
+  const skillRows = Array.isArray(details?.skills) ? details.skills as RecordData[] : [];
+  const requestRows = Array.isArray(details?.requests) ? details.requests as RecordData[] : [];
+  const sessionRows = Array.isArray(details?.sessions) ? details.sessions as RecordData[] : [];
+  const roomRows = Array.isArray(details?.openRooms) ? details.openRooms as RecordData[] : [];
   const toggleDetails = async () => {
     if (details) { setDetails(null); return; }
     setDetailsError("");
@@ -213,6 +218,12 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
       </div>
     </div>
     {detailsError && <p role="alert" className="mt-3 text-sm text-red-700">{detailsError}</p>}
-    {details && <div className="mt-4 grid gap-2 rounded-xl bg-paper p-3 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-4"><p>Teaching skills: {String((details.activity as RecordData)?.teachSkills ?? 0)}</p><p>Learning goals: {String((details.activity as RecordData)?.learningGoals ?? 0)}</p><p>Exchange requests: {String((details.activity as RecordData)?.exchangeRequests ?? 0)}</p><p>Learning sessions: {String((details.activity as RecordData)?.sessions ?? 0)}</p></div>}
+    {details && <div className="mt-4 space-y-4 rounded-xl bg-paper p-4 text-sm text-slate-700">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><p>Teaching skills: {String(activity.teachSkills ?? 0)}</p><p>Learning goals: {String(activity.learningGoals ?? 0)}</p><p>Exchange requests: {String(activity.exchangeRequests ?? 0)}</p><p>Learning sessions: {String(activity.sessions ?? 0)}</p></div>
+      <section><h3 className="font-semibold text-ink">Skills ({skillRows.length})</h3>{skillRows.length ? <ul className="mt-2 grid gap-2 sm:grid-cols-2">{skillRows.map((skill) => <li key={String(skill.id)} className="rounded-lg border border-ink/10 bg-white p-3"><p className="font-semibold">{String(skill.name)} <span className="font-normal text-slate-500">· {skill.kind === "teach" ? "Teaches" : "Wants to learn"}</span></p><p className="mt-1 text-xs text-slate-600">{String(skill.category)} · {String(skill.experienceLevel)} · {String(skill.instructionLanguage)}</p><p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">{String(skill.description)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No skills added.</p>}</section>
+      <section><h3 className="font-semibold text-ink">Exchange requests ({requestRows.length})</h3>{requestRows.length ? <ul className="mt-2 divide-y divide-ink/10">{requestRows.map((request) => <li key={String(request.id)} className="py-2"><span className="font-medium">{String(request.direction)} · {String(request.skillName)}</span><span className="ml-2 rounded-full bg-white px-2 py-1 text-xs">{String(request.status)}</span><p className="mt-1 text-xs text-slate-500">{String(request.senderName)} → {String(request.recipientName)} · {String(request.createdAt)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No exchange requests.</p>}</section>
+      <section><h3 className="font-semibold text-ink">Learning sessions ({sessionRows.length})</h3>{sessionRows.length ? <ul className="mt-2 divide-y divide-ink/10">{sessionRows.map((session) => <li key={String(session.id)} className="py-2"><span className="font-medium">{String(session.title || session.skillName)}</span><span className="ml-2 rounded-full bg-white px-2 py-1 text-xs">{String(session.status)} · {String(session.role)}</span><p className="mt-1 text-xs text-slate-500">Skill: {String(session.skillName)} · with {String(session.counterpartName)} · {String(session.scheduledAt || session.completedAt || "Not scheduled")}{session.cancelledAt ? ` · Cancelled ${String(session.cancelledAt)}` : ""}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No scheduled sessions.</p>}</section>
+      <section><h3 className="font-semibold text-ink">Learning rooms ({roomRows.length})</h3>{roomRows.length ? <ul className="mt-2 divide-y divide-ink/10">{roomRows.map((room) => <li key={String(room.id)} className="py-2"><span className="font-medium">{String(room.title)}</span><span className="ml-2 rounded-full bg-white px-2 py-1 text-xs">{String(room.status)} · {String(room.role)}</span><p className="mt-1 text-xs text-slate-500">Skill: {String(room.skillName)} · {String(room.participantCount)} participants · {String(room.scheduledAt)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No learning rooms.</p>}</section>
+    </div>}
   </article>;
 }

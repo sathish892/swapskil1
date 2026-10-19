@@ -404,6 +404,8 @@ function App() {
   })();
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  const [profileComplete, setProfileComplete] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
@@ -416,12 +418,29 @@ function App() {
         const payload = await response.json() as { user?: PublicUser };
         return payload.user ?? null;
       })
-      .then((currentUser) => setUser(currentUser))
+      .then(async (currentUser) => {
+        setUser(currentUser);
+        if (!currentUser || currentUser.role !== "user") {
+          setProfileComplete(true);
+          setProfileReady(true);
+          return;
+        }
+        try {
+          const response = await fetch("/api/profile", { credentials: "include", signal: controller.signal });
+          const payload = await response.json() as { profile?: { profileComplete?: boolean } };
+          setProfileComplete(response.ok && payload.profile?.profileComplete === true);
+        } catch {
+          // Let users reach the app if profile status cannot be checked; the profile page reports its own load error.
+          setProfileComplete(true);
+        } finally {
+          if (!controller.signal.aborted) setProfileReady(true);
+        }
+      })
       .catch(() => {
         // React StrictMode aborts its first development-only effect run.
         // Ignore that cancellation so it cannot mark the user as logged out
         // before the replacement session check has finished.
-        if (!controller.signal.aborted) setUser(null);
+        if (!controller.signal.aborted) { setUser(null); setProfileComplete(true); setProfileReady(true); }
       })
       .finally(() => {
         if (!controller.signal.aborted) setAuthReady(true);
@@ -433,6 +452,8 @@ function App() {
     if (!authReady) return;
     if (user?.role === "admin" && path !== "/admin") {
       window.location.replace("/admin");
+    } else if (user?.role === "user" && profileReady && !profileComplete && path !== "/profile") {
+      window.location.replace("/profile");
     } else if (user && (path === "/login" || path === "/register")) {
       window.location.replace(getSafeReturnPath());
     } else if (user && path === "/admin" && user.role !== "admin") {
@@ -440,7 +461,7 @@ function App() {
     } else if (!user && (["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/admin"].includes(path) || Boolean(learningRoomId))) {
       window.location.replace(`/login?redirect=${encodeURIComponent(path)}`);
     }
-  }, [authReady, user, path]);
+  }, [authReady, profileReady, profileComplete, user, path]);
 
   const logout = async () => {
     setLogoutError("");
@@ -458,7 +479,8 @@ function App() {
 
   const isAuthPage = path === "/login" || path === "/register";
   const isProtectedPath = ["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/admin"].includes(path) || Boolean(learningRoomId);
-  if (!authReady && (isAuthPage || isProtectedPath)) return <AuthLoading />;
+  if ((!authReady || (user?.role === "user" && !profileReady)) && (isAuthPage || isProtectedPath || Boolean(user))) return <AuthLoading />;
+  if (user?.role === "user" && profileReady && !profileComplete && path !== "/profile") return <AuthLoading />;
   if (user && isAuthPage) return <AuthLoading />;
   if (isProtectedPath && !user) return <AuthLoading />;
   if (path === "/admin" && user?.role === "admin") return <AdminDashboardPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;

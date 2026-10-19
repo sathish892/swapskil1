@@ -58,20 +58,17 @@ export function createReviewsRouter(database) {
 
   router.get("/reviews/pending", (req, res) => {
     const rows = database.prepare(
-      "SELECT s.id AS session_id, s.skill_name, s.completed_at, " +
-      "CASE WHEN s.teacher_user_id = ? THEN 'learner' ELSE 'teacher' END AS rating_type, " +
-      "CASE WHEN s.teacher_user_id = ? THEN s.learner_user_id ELSE s.teacher_user_id END AS recipient_id, " +
-      "CASE WHEN s.teacher_user_id = ? THEN learner.full_name ELSE teacher.full_name END AS recipient_name " +
+      "SELECT s.id AS session_id, s.skill_name, s.completed_at, 'teacher' AS rating_type, " +
+      "s.teacher_user_id AS recipient_id, teacher.full_name AS recipient_name " +
       "FROM learning_sessions s JOIN users teacher ON teacher.id = s.teacher_user_id " +
       "JOIN users learner ON learner.id = s.learner_user_id " +
-      "WHERE s.status = 'completed' AND s.cancelled_at IS NULL AND (s.teacher_user_id = ? OR s.learner_user_id = ?) " +
-      "AND NOT EXISTS (SELECT 1 FROM session_reviews r WHERE r.session_id = s.id AND r.reviewer_id = ? " +
-      "AND r.rating_type = CASE WHEN s.teacher_user_id = ? THEN 'learner' ELSE 'teacher' END) " +
+      "WHERE s.status = 'completed' AND s.cancelled_at IS NULL AND s.learner_user_id = ? " +
+      "AND NOT EXISTS (SELECT 1 FROM session_reviews r WHERE r.session_id = s.id AND r.reviewer_id = ? AND r.rating_type = 'teacher') " +
       "ORDER BY s.completed_at DESC, s.id",
-    ).all(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+    ).all(req.user.id, req.user.id);
     return res.json({ reviews: rows.map((row) => ({
       sessionId: row.session_id, skillName: row.skill_name, completedAt: row.completed_at,
-      ratingType: row.rating_type, recipient: { id: row.recipient_id, fullName: row.recipient_name },
+      ratingType: "teacher", recipient: { id: row.recipient_id, fullName: row.recipient_name },
     })) });
   });
 
@@ -93,10 +90,10 @@ export function createReviewsRouter(database) {
     }
     if (session.cancelled_at) return res.status(409).json({ error: "Cancelled sessions cannot be reviewed." });
     if (session.status !== "completed") return res.status(409).json({ error: "Both participants must confirm completion before reviewing." });
-    const isTeacher = session.teacher_user_id === req.user.id;
-    const recipientId = isTeacher ? session.learner_user_id : session.teacher_user_id;
+    if (session.learner_user_id !== req.user.id) return res.status(403).json({ error: "Only the learner can submit a session review." });
+    const recipientId = session.teacher_user_id;
     if (recipientId === req.user.id) return res.status(403).json({ error: "You cannot review yourself." });
-    const ratingType = isTeacher ? "learner" : "teacher";
+    const ratingType = "teacher";
     const id = randomUUID();
     try {
       database.prepare(

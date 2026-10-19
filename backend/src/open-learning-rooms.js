@@ -132,8 +132,10 @@ export function createOpenLearningRoomsRouter(database) {
     const room = database.prepare(selectRoom + "WHERE id = ?").get(req.params.id);
     const reviewer = database.prepare("SELECT role, left_at FROM open_learning_room_participants WHERE room_id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!room || !reviewer) return res.status(404).json({ error: "Learning room not found." });
+    // Room reviews are learner feedback for the teacher only.
+    if (reviewer.role !== "learner") return res.json({ reviews: [] });
     if (room.status !== "closed" && reviewer.left_at === null) return res.status(409).json({ error: "Leave the room before writing a review." });
-    const recipientRole = reviewer.role === "teacher" ? "learner" : "teacher";
+    const recipientRole = "teacher";
     const reviews = database.prepare(
       "SELECT p.user_id AS recipientId, u.full_name AS recipientName FROM open_learning_room_participants p " +
       "JOIN users u ON u.id = p.user_id LEFT JOIN open_room_reviews existing " +
@@ -144,7 +146,7 @@ export function createOpenLearningRoomsRouter(database) {
       roomId: req.params.id,
       skillName: room.skill_name,
       recipient: { id: row.recipientId, fullName: row.recipientName },
-      ratingType: reviewer.role === "teacher" ? "learner" : "teacher",
+      ratingType: "teacher",
     }));
     return res.json({ reviews });
   });
@@ -153,6 +155,7 @@ export function createOpenLearningRoomsRouter(database) {
     const room = database.prepare(selectRoom + "WHERE id = ?").get(req.params.id);
     const reviewer = database.prepare("SELECT role, left_at FROM open_learning_room_participants WHERE room_id = ? AND user_id = ?").get(req.params.id, req.user.id);
     if (!room || !reviewer) return res.status(404).json({ error: "Learning room not found." });
+    if (reviewer.role !== "learner") return res.status(403).json({ error: "Only learners can review the teacher." });
     if (room.status !== "closed" && reviewer.left_at === null) return res.status(409).json({ error: "Leave the room before writing a review." });
 
     const recipientId = typeof req.body?.recipientId === "string" ? req.body.recipientId.trim() : "";
@@ -162,20 +165,20 @@ export function createOpenLearningRoomsRouter(database) {
     if (!Number.isInteger(stars) || stars < 1 || stars > 5) return res.status(400).json({ error: "Choose a rating from 1 to 5 stars." });
     if (typeof reviewText !== "string" || reviewText.length > 1000) return res.status(400).json({ error: "Use 1,000 characters or fewer." });
 
-    const requiredRole = reviewer.role === "teacher" ? "learner" : "teacher";
+    const requiredRole = "teacher";
     const recipient = database.prepare("SELECT role FROM open_learning_room_participants WHERE room_id = ? AND user_id = ?").get(req.params.id, recipientId);
-    if (!recipient || recipient.role !== requiredRole || recipientId === req.user.id) return res.status(403).json({ error: "You can only review another participant in the opposite learning role." });
+    if (!recipient || recipient.role !== requiredRole || recipientId === req.user.id) return res.status(403).json({ error: "You can only review the teacher." });
     try {
       database.prepare(
         "INSERT INTO open_room_reviews (id, room_id, reviewer_id, recipient_id, rating_type, stars, review_text) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run(randomUUID(), req.params.id, req.user.id, recipientId, reviewer.role === "teacher" ? "learner" : "teacher", stars, reviewText.trim());
+      ).run(randomUUID(), req.params.id, req.user.id, recipientId, "teacher", stars, reviewText.trim());
     } catch (error) {
       if (/UNIQUE constraint failed: open_room_reviews\.room_id, open_room_reviews\.reviewer_id, open_room_reviews\.recipient_id/i.test(error.message)) {
         return res.status(409).json({ error: "You have already reviewed this participant for the room." });
       }
       throw error;
     }
-    return res.status(201).json({ review: { roomId: req.params.id, recipientId, ratingType: reviewer.role === "teacher" ? "learner" : "teacher", stars } });
+    return res.status(201).json({ review: { roomId: req.params.id, recipientId, ratingType: "teacher", stars } });
   });
 
   router.get("/open-learning-rooms/:id/ice-servers", (req, res) => {

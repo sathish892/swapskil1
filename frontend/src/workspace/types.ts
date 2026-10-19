@@ -1,6 +1,6 @@
 export type Profile = {
   id: string; fullName: string; bio: string; institution: string; department: string;
-  location: string; interests: string[]; updatedAt: string | null; learningSkillsPublic: boolean; avatarUrl: string;
+  location: string; interests: string[]; updatedAt: string | null; learningSkillsPublic: boolean; avatarUrl: string; profileComplete: boolean;
 };
 export type SkillEntry = {
   id: string; kind: "teach" | "learn"; name: string; category: string;

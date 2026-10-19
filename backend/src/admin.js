@@ -122,7 +122,34 @@ export function createModerationRouter(database) {
       exchangeRequests: database.prepare("SELECT COUNT(*) count FROM exchange_requests WHERE sender_user_id = ? OR recipient_user_id = ?").get(user.id, user.id).count,
       sessions: database.prepare("SELECT COUNT(*) count FROM learning_session_participants WHERE user_id = ?").get(user.id).count,
     };
-    res.json({ user, activity });
+    const skills = database.prepare(`SELECT id, kind, name, category, experience_level AS experienceLevel,
+      instruction_language AS instructionLanguage, description, created_at AS createdAt, updated_at AS updatedAt
+      FROM skills WHERE user_id = ? ORDER BY kind, lower(name), id`).all(user.id);
+    const requests = database.prepare(`SELECT r.id, r.status, r.created_at AS createdAt, r.updated_at AS updatedAt,
+      r.sender_user_id AS senderId, r.recipient_user_id AS recipientId,
+      sender.full_name AS senderName, recipient.full_name AS recipientName,
+      COALESCE(k.name, 'Skill no longer available') AS skillName,
+      CASE WHEN r.sender_user_id = ? THEN 'sent' ELSE 'received' END AS direction
+      FROM exchange_requests r JOIN users sender ON sender.id = r.sender_user_id
+      JOIN users recipient ON recipient.id = r.recipient_user_id
+      LEFT JOIN skills k ON k.id = r.skill_id
+      WHERE r.sender_user_id = ? OR r.recipient_user_id = ?
+      ORDER BY r.created_at DESC, r.id DESC LIMIT 100`).all(user.id, user.id, user.id);
+    const sessions = database.prepare(`SELECT s.id, s.skill_name AS skillName, s.title, s.status,
+      s.scheduled_at AS scheduledAt, s.completed_at AS completedAt, s.cancelled_at AS cancelledAt,
+      s.duration_minutes AS durationMinutes,
+      CASE WHEN s.teacher_user_id = ? THEN 'teacher' ELSE 'learner' END AS role,
+      CASE WHEN s.teacher_user_id = ? THEN learner.full_name ELSE teacher.full_name END AS counterpartName
+      FROM learning_sessions s JOIN users teacher ON teacher.id = s.teacher_user_id
+      JOIN users learner ON learner.id = s.learner_user_id
+      WHERE s.teacher_user_id = ? OR s.learner_user_id = ?
+      ORDER BY COALESCE(s.scheduled_at, s.created_at) DESC, s.id DESC LIMIT 100`).all(user.id, user.id, user.id, user.id);
+    const openRooms = database.prepare(`SELECT r.id, r.title, r.skill_name AS skillName, r.status,
+      r.starts_at AS scheduledAt, r.closed_at AS closedAt, r.duration_minutes AS durationMinutes,
+      p.role, (SELECT COUNT(*) FROM open_learning_room_participants allp WHERE allp.room_id = r.id) AS participantCount
+      FROM open_learning_rooms r JOIN open_learning_room_participants p ON p.room_id = r.id
+      WHERE p.user_id = ? ORDER BY r.starts_at DESC, r.id DESC LIMIT 100`).all(user.id);
+    res.json({ user, activity, skills, requests, sessions, openRooms });
   });
 
   admin.patch("/users/:id", mutateLimit, (req, res) => {

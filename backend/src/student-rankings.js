@@ -45,8 +45,9 @@ export function createStudentRankingsRouter(database) {
       FROM activity
       JOIN users u ON u.id = activity.user_id
       LEFT JOIN profiles p ON p.user_id = u.id
-      LEFT JOIN ratings ON ratings.recipient_id = u.id
+      JOIN ratings ON ratings.recipient_id = u.id
       WHERE u.role = 'user' AND u.status = 'active' AND activity.completed_sessions > 0
+        AND (COALESCE(ratings.teacher_reviews, 0) + COALESCE(ratings.learner_reviews, 0)) > 0
       ORDER BY activity.completed_sessions DESC,
         CASE WHEN ratings.teacher_rating IS NULL THEN 1 ELSE 0 END,
         ratings.teacher_rating DESC,
