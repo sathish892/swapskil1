@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PublicUser } from "../auth/types";
 import { Icon } from "../components/Icon";
 import { WorkspaceShell } from "./WorkspaceShell";
+import { readApi } from "./types";
 
 type Form = { goal: string; interests: string; knownSkills: string; hoursPerDay: number };
 type Lesson = { title: string; durationMinutes: number; learnAt: string; learnUrl: string; steps: string[]; practice: string; deliverable: string };
@@ -54,10 +55,11 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
     setBusy(true);
     try {
       const response = await fetch("/api/career-roadmaps/generate", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-      const payload = await response.json();
+      const payload = await readApi<{ plan?: Plan; references?: Reference[]; error?: string }>(response);
       if (response.status === 401) { window.location.assign(`/login?redirect=${encodeURIComponent("/roadmap")}`); return; }
       if (!response.ok) throw new Error(payload.error || "Could not analyze your career goal.");
-      const tasks = makeTasks(form, payload.plan as Plan); const id = roleKey(form.goal); setRoadmaps((current) => ({ ...current, [id]: { form, plan: payload.plan, references: payload.references || [], tasks } })); setActiveRole(id);
+      if (!payload.plan || !Array.isArray(payload.plan.phases)) throw new Error("The roadmap response was incomplete. Please try again.");
+      const tasks = makeTasks(form, payload.plan); const id = roleKey(form.goal); setRoadmaps((current) => ({ ...current, [id]: { form, plan: payload.plan!, references: payload.references || [], tasks } })); setActiveRole(id);
     } catch (err) { setError(err instanceof Error ? err.message : "Could not analyze your career goal. Please try again."); }
     finally { setBusy(false); }
   }
@@ -69,7 +71,7 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
       method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ completedTaskIds: tasks.filter((task) => task.done).map((task) => task.id) }),
     }).then(async (response) => {
-      if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || "Progress could not be synced."); }
+      if (!response.ok) { const payload = await readApi<{ error?: string }>(response); throw new Error(payload.error || "Progress could not be synced."); }
     }).catch((cause) => setError(cause instanceof Error ? `${cause.message} Your local progress is still saved on this device.` : "Progress could not sync to your account."));
   };
 

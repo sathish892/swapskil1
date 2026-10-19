@@ -19,6 +19,7 @@ import { Icon, type IconName } from "./components/Icon";
 import { Navbar } from "./components/Navbar";
 import { SectionHeading } from "./components/SectionHeading";
 import { AboutPage } from "./AboutPage";
+import { readApi } from "./workspace/types";
 
 const skills: {
   title: string;
@@ -416,7 +417,7 @@ function App() {
       .then(async (response) => {
         if (response.status === 401) return null;
         if (!response.ok) throw new Error("Could not validate the session.");
-        const payload = await response.json() as { user?: PublicUser };
+        const payload = await readApi<{ user?: PublicUser }>(response);
         return payload.user ?? null;
       })
       .then(async (currentUser) => {
@@ -428,7 +429,7 @@ function App() {
         }
         try {
           const response = await fetch("/api/profile", { credentials: "include", signal: controller.signal });
-          const payload = await response.json() as { profile?: { profileComplete?: boolean } };
+          const payload = await readApi<{ profile?: { profileComplete?: boolean } }>(response);
           setProfileComplete(response.ok && payload.profile?.profileComplete === true);
         } catch {
           // Let users reach the app if profile status cannot be checked; the profile page reports its own load error.

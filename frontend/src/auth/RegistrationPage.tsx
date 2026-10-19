@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AuthShell } from "./AuthShell";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { getSafeReturnPath, responseError, type ApiError, type PublicUser } from "./types";
+import { readApi } from "../workspace/types";
 
 export function RegistrationPage() {
   const [formError, setFormError] = useState("");
@@ -17,7 +18,7 @@ export function RegistrationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential }),
       });
-      const payload = await response.json() as ApiError & { user?: PublicUser };
+      const payload = await readApi<ApiError & { user?: PublicUser }>(response);
       if (!response.ok) {
         setFormError(responseError(payload, "We couldn’t create your account with Google. Please try again."));
         return;

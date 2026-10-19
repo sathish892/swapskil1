@@ -73,7 +73,7 @@ export function AdminDashboardPage({ user, onLogout, loggingOut, logoutError }: 
     const refreshUsers = () => {
       const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
       if (query) params.set("q", query); if (statusFilter) params.set("status", statusFilter); if (roleFilter) params.set("role", roleFilter);
-      void api(`/api/admin/users?${params}`).then(setData).catch(() => {});
+      void api<RecordData>(`/api/admin/users?${params}`).then(setData).catch(() => {});
     };
     const timer = window.setInterval(refreshUsers, 15_000);
     return () => window.clearInterval(timer);

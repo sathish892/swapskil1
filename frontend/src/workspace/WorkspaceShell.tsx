@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../components/Icon";
 import type { PublicUser } from "../auth/types";
+import { readApi } from "./types";
 
 const links = [
   { href: "/account", label: "Overview" }, { href: "/explore", label: "Explore" },
@@ -21,7 +22,7 @@ function NotificationCenter() {
   useEffect(() => {
     let active = true;
     const load = () => void fetch("/api/notifications", { credentials: "include" })
-      .then(async (response) => response.ok ? response.json() as Promise<{ notifications?: NotificationItem[]; unreadCount?: number }> : null)
+      .then((response) => response.ok ? readApi<{ notifications?: NotificationItem[]; unreadCount?: number }>(response) : null)
       .then((payload) => { if (active && payload) { setItems(payload.notifications || []); setUnread(payload.unreadCount || 0); } })
       .catch(() => {});
     load();
@@ -87,11 +88,11 @@ export function WorkspaceShell({ user, title, eyebrow, description, children, on
           </button>
         </div>
         <nav id="workspace-navigation" aria-label="Your SkillSwap pages" className={`${menuOpen ? "block" : "hidden"} border-t border-ink/8 bg-white sm:block`}>
-          <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-3 sm:flex-row sm:overflow-x-auto sm:px-7 lg:px-10">
-            {links.map(({ href, label }) => <a key={href} href={href} aria-current={current(href) ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`min-h-10 rounded-lg px-3.5 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-forest sm:shrink-0 ${current(href) ? "bg-[#e9f1ed] font-semibold text-forest" : "text-slate-600 hover:bg-paper hover:text-ink"}`}>{label}</a>)}
+          <div className="mx-auto grid max-h-[70vh] max-w-7xl grid-cols-2 gap-1 overflow-y-auto px-4 py-3 sm:flex sm:max-h-none sm:flex-row sm:overflow-x-auto sm:overflow-y-visible sm:px-7 lg:px-10">
+            {links.map(({ href, label }) => <a key={href} href={href} aria-current={current(href) ? "page" : undefined} onClick={() => setMenuOpen(false)} className={`min-h-10 min-w-0 rounded-lg px-3.5 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-forest sm:shrink-0 ${current(href) ? "bg-[#e9f1ed] font-semibold text-forest" : "text-slate-600 hover:bg-paper hover:text-ink"}`}>{label}</a>)}
             {user.role === "admin" && <a href="/admin" aria-current={currentPath === "/admin" ? "page" : undefined} className={`min-h-10 rounded-lg px-3.5 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-forest sm:shrink-0 ${currentPath === "/admin" ? "bg-[#e9f1ed] font-semibold text-forest" : "text-slate-600 hover:bg-paper hover:text-ink"}`}>Admin</a>}
-            <a href="/" className="min-h-10 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-paper hover:text-ink focus-visible:outline-2 focus-visible:outline-forest sm:hidden">Back to homepage</a>
-            <div className="mt-2 flex items-center justify-between border-t border-ink/8 pt-3 sm:hidden"><span className="text-sm text-slate-600">{user.fullName}</span><button type="button" onClick={onLogout} disabled={loggingOut} className="min-h-10 rounded-lg border border-ink/15 px-4 text-sm font-semibold text-ink disabled:opacity-60">{loggingOut ? "Signing out…" : "Sign out"}</button></div>
+            <a href="/" className="col-span-2 min-h-10 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-paper hover:text-ink focus-visible:outline-2 focus-visible:outline-forest sm:hidden">Back to homepage</a>
+            <div className="col-span-2 mt-2 flex items-center justify-between border-t border-ink/8 pt-3 sm:hidden"><span className="text-sm text-slate-600">{user.fullName}</span><button type="button" onClick={onLogout} disabled={loggingOut} className="min-h-10 rounded-lg border border-ink/15 px-4 text-sm font-semibold text-ink disabled:opacity-60">{loggingOut ? "Signing out…" : "Sign out"}</button></div>
           </div>
         </nav>
         <div className="mx-auto flex max-w-7xl justify-end px-4 py-2 sm:px-7 lg:px-10"><NotificationCenter /></div>

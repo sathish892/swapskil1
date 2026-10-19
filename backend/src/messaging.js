@@ -68,7 +68,10 @@ export function createMessagingRouter(database, options = {}) {
       "WHERE m.conversation_id = c.id AND m.sender_id <> ? AND m.created_at > me.last_read_at) AS unread " +
       "FROM conversations c JOIN conversation_members mine ON mine.conversation_id = c.id " +
       "WHERE mine.user_id = ? AND mine.left_at IS NULL " +
-      "ORDER BY COALESCE(last_at, c.created_at) DESC, c.id LIMIT 100",
+      // PostgreSQL does not allow a SELECT alias inside a larger ORDER BY
+      // expression. Repeat the scalar subquery so this works in both SQLite
+      // and the Supabase Postgres adapter.
+      "ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1), c.created_at) DESC, c.id LIMIT 100",
     ).all(req.user.id, req.user.id, req.user.id);
     const membersQuery = database.prepare(
       "SELECT u.id, u.full_name, cm.joined_at FROM conversation_members cm JOIN users u ON u.id = cm.user_id " +

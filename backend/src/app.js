@@ -17,6 +17,10 @@ import { createCareerRoadmapsRouter } from "./career-roadmaps.js";
 export function createApp(database, options = {}) {
   const app = express();
   app.disable("x-powered-by");
+  // Render terminates TLS at its proxy and forwards the original client IP.
+  // Trust its first proxy hop so Express and express-rate-limit handle that
+  // forwarded address safely without ERR_ERL_FORWARDED_HEADER warnings.
+  if (process.env.RENDER || process.env.NODE_ENV === "production") app.set("trust proxy", 1);
   const configuredOrigins = getConfiguredOrigins();
   const defaultOrigins = process.env.NODE_ENV === "production"
     ? ["https://swapskil1.vercel.app", "https://swapskil1-2uc5.vercel.app"]

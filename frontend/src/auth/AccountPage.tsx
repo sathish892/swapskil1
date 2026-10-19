@@ -22,7 +22,7 @@ export function AccountPage({ user, onLogout, loggingOut, logoutError }: {
 
   const load = useCallback(async () => {
     setError(""); setLoading(true);
-    try {
+    const fetchDashboard = async () => {
       const responses = await Promise.all([
         fetch("/api/skills", { credentials: "include" }),
         fetch("/api/exchange-requests", { credentials: "include" }),
@@ -36,6 +36,16 @@ export function AccountPage({ user, onLogout, loggingOut, logoutError }: {
       const failedIndex = responses.findIndex((response) => !response.ok);
       if (failedIndex >= 0) throw new Error([skillData, requestData, sessionData, conversationData][failedIndex].error || "Couldn’t load your dashboard.");
       setSkills(skillData.skills || []); setRequests(requestData.requests || []); setSessions(sessionData.sessions || []); setConversations(conversationData.conversations || []);
+    };
+    try {
+      try {
+        await fetchDashboard();
+      } catch {
+        // A free backend may be waking up or a mobile connection may drop one
+        // response. Retry this read-only dashboard load once before showing an error.
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        await fetchDashboard();
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn’t connect to SkillSwap. Please try again."); }
     finally { setLoading(false); }
   }, []);
