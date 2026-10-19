@@ -40,8 +40,15 @@ export function createCareerRoadmapsRouter(database) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        console.error("OpenAI roadmap request failed:", response.status, payload?.error?.code || "provider error");
-        return res.status(502).json({ error: "The AI could not build your roadmap right now. Please try again." });
+        const providerCode = clean(payload?.error?.code, 80) || "provider_error";
+        const providerMessage = clean(payload?.error?.message, 240);
+        console.error("OpenAI roadmap request failed:", response.status, providerCode, providerMessage);
+        const hint = response.status === 401 || response.status === 403
+          ? "Check that OPENAI_API_KEY is valid and enabled for API use."
+          : response.status === 429
+            ? "Check API billing, project limits, and rate limits."
+            : "Check the backend model setting and OpenAI request configuration.";
+        return res.status(502).json({ error: `AI provider request failed (HTTP ${response.status}; ${providerCode}). ${hint}` });
       }
       const output = payload.output || [];
       const text = output.flatMap((item) => item.content || []).find((part) => part.type === "output_text")?.text;
@@ -50,8 +57,8 @@ export function createCareerRoadmapsRouter(database) {
       const references = output.flatMap((item) => item.content || []).flatMap((part) => part.annotations || []).filter((annotation) => annotation.type === "url_citation" && /^https?:\/\//i.test(annotation.url || "")).slice(0, 12).map((annotation) => ({ title: clean(annotation.title, 180) || new URL(annotation.url).hostname, url: annotation.url }));
       return res.json({ plan, references: [...new Map(references.map((reference) => [reference.url, reference])).values()] });
     } catch (error) {
-      console.error("OpenAI roadmap request error:", error.name || "unknown");
-      return res.status(502).json({ error: error.name === "TimeoutError" ? "Roadmap research took too long. Please try again." : "The AI could not build your roadmap right now. Please try again." });
+      console.error("OpenAI roadmap request error:", error.name || "unknown", clean(error.message, 240));
+      return res.status(502).json({ error: error.name === "TimeoutError" ? "Roadmap research took too long. Please try again." : "Could not connect to the AI provider. Check backend network access and try again." });
     }
   });
   return router;
