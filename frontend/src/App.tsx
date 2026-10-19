@@ -13,6 +13,7 @@ import { LearningRoomsPage } from "./workspace/LearningRoomsPage";
 import { MeetingRoomPage } from "./workspace/MeetingRoomPage";
 import { AdminDashboardPage } from "./workspace/AdminDashboardPage";
 import { StudentRankingsPage } from "./workspace/StudentRankingsPage";
+import { RoadmapPage } from "./workspace/RoadmapPage";
 import { getSafeReturnPath, type PublicUser } from "./auth/types";
 import { Icon, type IconName } from "./components/Icon";
 import { Navbar } from "./components/Navbar";
@@ -458,7 +459,7 @@ function App() {
       window.location.replace(getSafeReturnPath());
     } else if (user && path === "/admin" && user.role !== "admin") {
       window.location.replace("/account");
-    } else if (!user && (["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/admin"].includes(path) || Boolean(learningRoomId))) {
+    } else if (!user && (["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/roadmap", "/admin"].includes(path) || Boolean(learningRoomId))) {
       window.location.replace(`/login?redirect=${encodeURIComponent(path)}`);
     }
   }, [authReady, profileReady, profileComplete, user, path]);
@@ -478,7 +479,7 @@ function App() {
   };
 
   const isAuthPage = path === "/login" || path === "/register";
-  const isProtectedPath = ["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/admin"].includes(path) || Boolean(learningRoomId);
+  const isProtectedPath = ["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/roadmap", "/admin"].includes(path) || Boolean(learningRoomId);
   if ((!authReady || (user?.role === "user" && !profileReady)) && (isAuthPage || isProtectedPath || Boolean(user))) return <AuthLoading />;
   if (user?.role === "user" && profileReady && !profileComplete && path !== "/profile") return <AuthLoading />;
   if (user && isAuthPage) return <AuthLoading />;
@@ -488,6 +489,7 @@ function App() {
   if (path === "/requests" && user) return <RequestsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/sessions" && user) return <SessionsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/students" && user) return <StudentRankingsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
+  if (path === "/roadmap" && user) return <RoadmapPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/messages" && user) return <MessagesPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/learning-rooms" && user) return <LearningRoomsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (learningRoomId && user) return <MeetingRoomPage sessionId={learningRoomId} openRoom={learningRoomId.startsWith("open-")} user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;

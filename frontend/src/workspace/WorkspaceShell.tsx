@@ -4,6 +4,7 @@ import type { PublicUser } from "../auth/types";
 
 const links = [
   { href: "/account", label: "Overview" }, { href: "/explore", label: "Explore" },
+  { href: "/roadmap", label: "My roadmap" },
   { href: "/profile", label: "My profile" }, { href: "/my-skills", label: "My skills" },
   { href: "/requests", label: "Requests" }, { href: "/sessions", label: "Sessions" },
   { href: "/students", label: "Student rankings" },
