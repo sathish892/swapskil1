@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { PostgresSyncDatabase } from "./postgres-database.js";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 16;
+const DATABASE_VERSION = 17;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -48,8 +48,8 @@ export function migrateDatabase(database) {
       CREATE TABLE IF NOT EXISTS sessions (
         token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64),
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at INTEGER NOT NULL,
-        expires_at INTEGER NOT NULL
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
@@ -457,6 +457,9 @@ export function migrateDatabase(database) {
         PRAGMA user_version = 16;
       `);
     }
+    if (currentVersion < 17) {
+      database.exec("PRAGMA user_version = 17;");
+    }
     database.exec("COMMIT;");
   } catch (error) {
     database.exec("ROLLBACK;");
@@ -560,7 +563,20 @@ function initializePostgresDatabase(connectionString, configuredPath) {
       }
     } else {
       const version = database.prepare("SELECT version FROM skillswap_schema_meta LIMIT 1").get()?.version;
-      if (version !== DATABASE_VERSION) {
+      if (version === 16) {
+        database.exec("BEGIN");
+        try {
+          database.exec(`
+            ALTER TABLE sessions ALTER COLUMN created_at TYPE BIGINT;
+            ALTER TABLE sessions ALTER COLUMN expires_at TYPE BIGINT;
+            UPDATE skillswap_schema_meta SET version = ${DATABASE_VERSION};
+          `);
+          database.exec("COMMIT");
+        } catch (error) {
+          try { database.exec("ROLLBACK"); } catch { /* transaction already ended */ }
+          throw error;
+        }
+      } else if (version !== DATABASE_VERSION) {
         throw new Error(`Supabase database schema version ${version ?? "unknown"} does not match this app (${DATABASE_VERSION}). Apply the database migration before deploying.`);
       }
     }
