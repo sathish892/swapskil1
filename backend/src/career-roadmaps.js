@@ -8,6 +8,26 @@ const safeHttpsUrl = (value) => {
   if (typeof value !== "string") return "";
   try { const url = new URL(value); return url.protocol === "https:" ? url.href : ""; } catch { return ""; }
 };
+function parsePlan(text) {
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  try { return JSON.parse(cleaned); } catch { /* Search citations or a short intro may wrap the JSON object. */ }
+  const start = cleaned.indexOf("{");
+  if (start < 0) throw new SyntaxError("No JSON object in model response.");
+  let depth = 0; let quoted = false; let escaped = false;
+  for (let index = start; index < cleaned.length; index += 1) {
+    const char = cleaned[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) return JSON.parse(cleaned.slice(start, index + 1));
+  }
+  throw new SyntaxError("Model response contains incomplete JSON.");
+}
 
 export function createCareerRoadmapsRouter(database) {
   const router = Router();
@@ -44,22 +64,34 @@ export function createCareerRoadmapsRouter(database) {
       const output = payload.output || [];
       const text = output.flatMap((item) => item.content || []).find((part) => part.type === "output_text")?.text;
       if (!text) return res.status(502).json({ error: "The AI returned an empty roadmap. Please try again." });
-      const plan = JSON.parse(text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-      if (!plan || !Array.isArray(plan.phases) || typeof plan.roleSummary !== "string") return res.status(502).json({ error: "The AI returned an incomplete roadmap. Please try again." });
-      plan.phases = plan.phases.slice(0, 8).map((phase) => ({
+      const plan = parsePlan(text);
+      if (!plan || typeof plan !== "object" || !Array.isArray(plan.phases) || typeof plan.roleSummary !== "string") return res.status(502).json({ error: "The AI returned an incomplete roadmap. Please try again." });
+      plan.roleSummary = clean(plan.roleSummary, 1400);
+      plan.inputAnalysis = clean(plan.inputAnalysis, 1800);
+      plan.strengths = (Array.isArray(plan.strengths) ? plan.strengths : []).slice(0, 12).map((item) => clean(item, 300)).filter(Boolean);
+      plan.skillGaps = (Array.isArray(plan.skillGaps) ? plan.skillGaps : []).slice(0, 16).map((item) => clean(item, 300)).filter(Boolean);
+      plan.assumptions = (Array.isArray(plan.assumptions) ? plan.assumptions : []).slice(0, 8).map((item) => clean(item, 300)).filter(Boolean);
+      plan.projects = (Array.isArray(plan.projects) ? plan.projects : []).slice(0, 10).map((item) => clean(item, 500)).filter(Boolean);
+      plan.phases = plan.phases.filter((phase) => phase && typeof phase === "object").slice(0, 8).map((phase) => ({
         title: clean(phase.title, 160), purpose: clean(phase.purpose, 500),
-        sessions: (Array.isArray(phase.sessions) ? phase.sessions : []).slice(0, 20).map((session) => ({
+        sessions: (Array.isArray(phase.sessions) ? phase.sessions : []).filter((session) => session && typeof session === "object").slice(0, 20).map((session) => ({
           title: clean(session.title, 180), durationMinutes: clamp(Number.isFinite(Number(session.durationMinutes)) ? Number(session.durationMinutes) : Math.round(hoursPerDay * 60), 15, Math.round(hoursPerDay * 60)),
           learnAt: clean(session.learnAt, 180), learnUrl: safeHttpsUrl(session.learnUrl),
           steps: (Array.isArray(session.steps) ? session.steps : []).slice(0, 8).map((step) => clean(step, 500)).filter(Boolean),
           practice: clean(session.practice, 800), deliverable: clean(session.deliverable, 500)
         }))
       }));
-      const references = Array.isArray(plan.references) ? plan.references.map((ref) => ({ title: clean(ref.title, 180), url: safeHttpsUrl(ref.url) })).filter((ref) => ref.url).slice(0, 12).map((ref) => ({ ...ref, title: ref.title || new URL(ref.url).hostname })) : [];
+      if (!plan.phases.some((phase) => phase.sessions.length > 0)) return res.status(502).json({ error: "The AI returned no study lessons. Please try again." });
+      const references = Array.isArray(plan.references) ? plan.references.filter((ref) => ref && typeof ref === "object").map((ref) => ({ title: clean(ref.title, 180), url: safeHttpsUrl(ref.url) })).filter((ref) => ref.url).slice(0, 12).map((ref) => ({ ...ref, title: ref.title || new URL(ref.url).hostname })) : [];
       return res.json({ plan, references: [...new Map(references.map((reference) => [reference.url, reference])).values()] });
     } catch (error) {
       console.error("Groq roadmap request error:", error.name || "unknown", clean(error.message, 240));
-      return res.status(502).json({ error: error.name === "TimeoutError" ? "Roadmap research took too long. Please try again." : "Could not build the roadmap from web research. Please try again." });
+      const message = error.name === "SyntaxError"
+        ? "The AI returned a roadmap in an unreadable format. Please try again."
+        : error.name === "TimeoutError"
+          ? "Roadmap research took too long. Please try again."
+          : "Could not process the roadmap response. Please try again.";
+      return res.status(502).json({ error: message });
     }
   });
   return router;
