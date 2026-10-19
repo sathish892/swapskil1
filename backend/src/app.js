@@ -12,6 +12,7 @@ import { createStudentRankingsRouter } from "./student-rankings.js";
 import { createMeetingTicketsRouter } from "./meeting-tickets.js";
 import { createNotificationsRouter } from "./notifications.js";
 import { getConfiguredOrigins, isDevelopmentFrontendOrigin } from "./origin-policy.js";
+import { createCareerRoadmapsRouter } from "./career-roadmaps.js";
 
 export function createApp(database, options = {}) {
   const app = express();
@@ -80,6 +81,7 @@ export function createApp(database, options = {}) {
   // Keep authenticated routers after /api/auth. Their router-wide auth
   // middleware would otherwise intercept unauthenticated login requests.
   app.use("/api", createStudentRankingsRouter(database));
+  app.use("/api", createCareerRoadmapsRouter(database));
   app.use("/api", createProfileSkillsRouter(database));
   app.use("/api", createExploreRouter(database));
   app.use("/api", createReviewsRouter(database));
