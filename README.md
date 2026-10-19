@@ -1,6 +1,12 @@
 # SkillSwap
 
-SkillSwap is a student skill-exchange application. The frontend is a React + TypeScript app, and the backend is an Express API backed by SQLite.
+SkillSwap is a student skill-exchange application. The frontend is a React + TypeScript app, and the backend is an Express API. Local development uses SQLite; production can use Supabase Postgres through `DATABASE_URL`.
+
+## Persistent production database
+
+Set `DATABASE_URL` in the backend hosting environment to the **Session pooler** connection string from the Supabase project's **Connect** dialog. The password belongs only in that hosting secret; never put it in frontend variables or source control. On first startup, the backend creates the current schema, locks down the tables from Supabase's public API roles, and imports an existing local SQLite database if one is present. Later restarts use the Supabase database as the source of truth.
+
+If the Supabase schema is changed, update the versioned database migration before deploying. Keep periodic exports/backups of the free-tier database.
 
 ## Production first-admin setup
 

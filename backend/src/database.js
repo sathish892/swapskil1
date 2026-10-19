@@ -1,7 +1,8 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { PostgresSyncDatabase } from "./postgres-database.js";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DATABASE_VERSION = 16;
@@ -466,7 +467,111 @@ export function migrateDatabase(database) {
 }
 
 export function initializeDatabase(configuredPath) {
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (connectionString) return initializePostgresDatabase(connectionString, configuredPath);
   const database = openDatabase(configuredPath);
   migrateDatabase(database);
   return database;
+}
+
+function postgresSchemaFromCurrentMigrations() {
+  const source = new DatabaseSync(":memory:");
+  migrateDatabase(source);
+  const schema = source.prepare(`
+    SELECT type, name, sql FROM sqlite_master
+    WHERE type IN ('table', 'index') AND sql IS NOT NULL
+      AND name NOT LIKE 'sqlite_%'
+    ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, rowid
+  `).all();
+  source.close();
+  return schema.map(({ sql }) => sql
+    .replace(/\bDEFAULT\s+CURRENT_TIMESTAMP\b/gi, "DEFAULT (CURRENT_TIMESTAMP::text)")
+  );
+}
+
+function importExistingSqliteData(postgres, configuredPath) {
+  const path = configuredPath ?? process.env.SQLITE_DB_PATH ?? "../database/skillswap.sqlite";
+  const databasePath = path === ":memory:"
+    ? path
+    : isAbsolute(path)
+      ? path
+      : resolve(backendDirectory, path);
+  if (databasePath === ":memory:" || !existsSync(databasePath)) return;
+
+  const source = openDatabase(databasePath);
+  migrateDatabase(source);
+  const tableNames = source.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%' ORDER BY rowid
+  `).all().map((row) => row.name);
+
+  try {
+    for (const table of tableNames) {
+      const quotedTable = `"${table.replaceAll('"', '""')}"`;
+      const columns = source.prepare(`PRAGMA table_info(${quotedTable})`).all().map((column) => column.name);
+      if (columns.length === 0) continue;
+      const rows = source.prepare(`SELECT * FROM ${quotedTable}`).all();
+      const quotedColumns = columns.map((column) => `"${column.replaceAll('"', '""')}"`).join(", ");
+      for (let offset = 0; offset < rows.length; offset += 100) {
+        const batch = rows.slice(offset, offset + 100);
+        const values = [];
+        const tuples = batch.map((row, rowIndex) => {
+          const placeholders = columns.map((column, columnIndex) => {
+            values.push(row[column]);
+            return `$${rowIndex * columns.length + columnIndex + 1}`;
+          });
+          return `(${placeholders.join(", ")})`;
+        });
+        postgres.prepare(`INSERT INTO ${quotedTable} (${quotedColumns}) VALUES ${tuples.join(", ")}`).run(...values);
+      }
+    }
+  } finally {
+    source.close();
+  }
+}
+
+function initializePostgresDatabase(connectionString, configuredPath) {
+  const database = new PostgresSyncDatabase(connectionString);
+  let locked = false;
+  try {
+    database.exec("SELECT pg_advisory_lock(716026160)");
+    locked = true;
+    const metadata = database.prepare("SELECT to_regclass('public.skillswap_schema_meta') AS table_name").get();
+    if (!metadata?.table_name) {
+      const schema = postgresSchemaFromCurrentMigrations();
+      database.exec("BEGIN");
+      try {
+        for (const statement of schema) database.exec(statement);
+        database.exec(`
+          CREATE TABLE skillswap_schema_meta (version INTEGER NOT NULL);
+          INSERT INTO skillswap_schema_meta (version) VALUES (${DATABASE_VERSION});
+          REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+          REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+            REVOKE ALL ON TABLES FROM anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+            REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+        `);
+        importExistingSqliteData(database, configuredPath);
+        database.exec("COMMIT");
+      } catch (error) {
+        try { database.exec("ROLLBACK"); } catch { /* transaction already ended */ }
+        throw error;
+      }
+    } else {
+      const version = database.prepare("SELECT version FROM skillswap_schema_meta LIMIT 1").get()?.version;
+      if (version !== DATABASE_VERSION) {
+        throw new Error(`Supabase database schema version ${version ?? "unknown"} does not match this app (${DATABASE_VERSION}). Apply the database migration before deploying.`);
+      }
+    }
+    database.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
+    return database;
+  } catch (error) {
+    database.close();
+    throw error;
+  } finally {
+    if (locked) {
+      try { database.exec("SELECT pg_advisory_unlock(716026160)"); } catch { /* connection closes on startup failure */ }
+    }
+  }
 }
