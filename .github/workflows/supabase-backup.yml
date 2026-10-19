@@ -1,0 +1,50 @@
+name: Supabase database backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate backup secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_DB_URL:?Add SUPABASE_DB_URL in repository Actions secrets}"
+          : "${BACKUP_ENCRYPTION_PASSPHRASE:?Add BACKUP_ENCRYPTION_PASSPHRASE in repository Actions secrets}"
+
+      - name: Export and encrypt Supabase database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/skillswap-backup"
+          docker run --rm \
+            --entrypoint /bin/sh \
+            --env SUPABASE_DB_URL \
+            --volume "$RUNNER_TEMP/skillswap-backup:/backup" \
+            postgres:18-alpine \
+            -c 'pg_dump "$SUPABASE_DB_URL" --format=custom --no-owner --no-privileges --file=/backup/skillswap.dump'
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$BACKUP_ENCRYPTION_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 \
+            --output "$RUNNER_TEMP/skillswap-backup/skillswap-$(date -u +%Y-%m-%d).dump.gpg" \
+            "$RUNNER_TEMP/skillswap-backup/skillswap.dump"
+          rm "$RUNNER_TEMP/skillswap-backup/skillswap.dump"
+
+      - name: Store encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skillswap-supabase-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/skillswap-backup/*.dump.gpg
+          if-no-files-found: error
+          retention-days: 90
