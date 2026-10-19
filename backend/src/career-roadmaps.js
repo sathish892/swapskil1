@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { requireAuth } from "./auth.js";
 
 const clean = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value)));
+const roleKeyFor = (value) => clean(value, 180).toLocaleLowerCase().replace(/\s+/g, " ");
 const safeHttpsUrl = (value) => {
   if (typeof value !== "string") return "";
   try { const url = new URL(value); return url.protocol === "https:" ? url.href : ""; } catch { return ""; }
@@ -79,6 +81,20 @@ export function createCareerRoadmapsRouter(database) {
   router.use(requireAuth(database));
   router.use("/career-roadmaps/generate", rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "You've reached the hourly roadmap limit. Please try again later." } }));
 
+  router.patch("/career-roadmaps/:roleKey/progress", (req, res) => {
+    const roleKey = clean(req.params.roleKey, 180);
+    const completed = req.body?.completedTaskIds;
+    if (!roleKey || !Array.isArray(completed) || completed.length > 500 || completed.some((id) => typeof id !== "string" || !/^task-\d{1,4}$/.test(id))) {
+      return res.status(400).json({ error: "Invalid roadmap progress update." });
+    }
+    const roadmap = database.prepare("SELECT id FROM career_roadmaps WHERE user_id = ? AND role_key = ?").get(req.user.id, roleKey);
+    if (!roadmap) return res.status(404).json({ error: "Saved roadmap not found." });
+    const indexes = [...new Set(completed.map((id) => Number(id.slice(5))))];
+    database.prepare("UPDATE career_roadmaps SET completed_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(JSON.stringify(indexes), roadmap.id);
+    return res.json({ updated: true });
+  });
+
   router.post("/career-roadmaps/generate", async (req, res) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return res.status(503).json({ error: "Free AI roadmap generation is not configured yet. Add GROQ_API_KEY to the backend environment." });
@@ -112,7 +128,14 @@ export function createCareerRoadmapsRouter(database) {
       }));
       if (!plan.phases.some((phase) => phase.sessions.length > 0)) return res.status(502).json({ error: "The AI returned no study lessons. Please try again." });
       const references = Array.isArray(plan.references) ? plan.references.filter((ref) => ref && typeof ref === "object").map((ref) => ({ title: clean(ref.title, 180), url: safeHttpsUrl(ref.url) })).filter((ref) => ref.url).slice(0, 12).map((ref) => ({ ...ref, title: ref.title || new URL(ref.url).hostname })) : [];
-      return res.json({ plan, references: [...new Map(references.map((reference) => [reference.url, reference])).values()] });
+      const savedReferences = [...new Map(references.map((reference) => [reference.url, reference])).values()];
+      const roleKey = roleKeyFor(goal);
+      database.prepare(`INSERT INTO career_roadmaps (id, user_id, role_key, goal, form_json, plan_json, references_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, role_key) DO UPDATE SET goal=excluded.goal, form_json=excluded.form_json,
+          plan_json=excluded.plan_json, references_json=excluded.references_json, completed_json='[]', updated_at=CURRENT_TIMESTAMP`)
+        .run(randomUUID(), req.user.id, roleKey, goal, JSON.stringify({ goal, interests, knownSkills, hoursPerDay }), JSON.stringify(plan), JSON.stringify(savedReferences));
+      return res.json({ plan, references: savedReferences, roleKey });
     } catch (error) {
       console.error("Groq roadmap request error:", error.name || "unknown", clean(error.message, 240));
       if (error.status) return res.status(error.status).json({ error: error.message });

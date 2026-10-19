@@ -68,6 +68,16 @@ export function AdminDashboardPage({ user, onLogout, loggingOut, logoutError }: 
   }, [view, query, statusFilter, roleFilter, reportStatus, page]);
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), view === "users" ? 250 : 0); return () => window.clearTimeout(timer); }, [load, view]);
+  useEffect(() => {
+    if (view !== "users") return;
+    const refreshUsers = () => {
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
+      if (query) params.set("q", query); if (statusFilter) params.set("status", statusFilter); if (roleFilter) params.set("role", roleFilter);
+      void api(`/api/admin/users?${params}`).then(setData).catch(() => {});
+    };
+    const timer = window.setInterval(refreshUsers, 15_000);
+    return () => window.clearInterval(timer);
+  }, [view, query, statusFilter, roleFilter, page]);
   useEffect(() => { window.history.replaceState({}, "", `/admin?view=${view}`); }, [view]);
   useEffect(() => { setPage(0); }, [view, query, statusFilter, roleFilter, reportStatus]);
 
@@ -187,6 +197,7 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
   const [detailsError, setDetailsError] = useState("");
   const id = String(account.id); const status = String(account.status); const role = String(account.role);
   const activity = (details?.activity || {}) as RecordData;
+  const roadmapRows = Array.isArray(details?.roadmaps) ? details.roadmaps as RecordData[] : [];
   const skillRows = Array.isArray(details?.skills) ? details.skills as RecordData[] : [];
   const requestRows = Array.isArray(details?.requests) ? details.requests as RecordData[] : [];
   const sessionRows = Array.isArray(details?.sessions) ? details.sessions as RecordData[] : [];
@@ -197,6 +208,13 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
     try { setDetails(await api(`/api/admin/users/${encodeURIComponent(id)}`)); }
     catch (cause) { setDetailsError(cause instanceof Error ? cause.message : "Could not load account activity."); }
   };
+  useEffect(() => {
+    if (!details) return;
+    const timer = window.setInterval(() => {
+      void api<RecordData>(`/api/admin/users/${encodeURIComponent(id)}`).then(setDetails).catch(() => {});
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [details, id]);
   const action = (kind: string, prompt: string, nextRole?: string) => {
     const reason = window.prompt(prompt);
     if (reason === null || reason.trim().length < 3) return;
@@ -207,7 +225,7 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
   };
   return <article className="py-4">
     <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-      <div className="min-w-0"><p className="break-words font-semibold">{String(account.fullName)} {id === currentUserId && <span className="text-xs font-medium text-slate-500">(you)</span>} <span className="ml-1 rounded-full bg-paper px-2 py-1 text-xs font-medium">{role}</span> <span className="rounded-full bg-paper px-2 py-1 text-xs font-medium">{status}</span></p><p className="mt-1 break-all text-sm text-slate-600">{String(account.email)}</p><p className="mt-1 text-xs text-slate-500">Joined {String(account.createdAt)}{account.suspensionReason ? ` · Reason: ${String(account.suspensionReason)}` : ""}{account.removalReason ? ` · Removal: ${String(account.removalReason)}` : ""}</p></div>
+      <div className="min-w-0"><p className="break-words font-semibold">{String(account.fullName)} {id === currentUserId && <span className="text-xs font-medium text-slate-500">(you)</span>} <span className="ml-1 rounded-full bg-paper px-2 py-1 text-xs font-medium">{role}</span> <span className="rounded-full bg-paper px-2 py-1 text-xs font-medium">{status}</span></p><p className="mt-1 break-all text-sm text-slate-600">{String(account.email)}</p><p className="mt-1 text-xs text-slate-500">Joined {String(account.createdAt)} · Last active {String(account.lastActiveAt || "Not recorded")}{account.suspensionReason ? ` · Reason: ${String(account.suspensionReason)}` : ""}{account.removalReason ? ` · Removal: ${String(account.removalReason)}` : ""}</p></div>
       <div className="flex flex-wrap gap-2">
         <button className={button} type="button" onClick={() => void toggleDetails()}>{details ? "Hide details" : "View details"}</button>
         {status === "active" && <button className={button} disabled={id === currentUserId} type="button" onClick={() => action("suspend", "Reason for suspension:")}>Suspend</button>}
@@ -219,7 +237,8 @@ function UserRow({ account, currentUserId, onAction }: { account: RecordData; cu
     </div>
     {detailsError && <p role="alert" className="mt-3 text-sm text-red-700">{detailsError}</p>}
     {details && <div className="mt-4 space-y-4 rounded-xl bg-paper p-4 text-sm text-slate-700">
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><p>Teaching skills: {String(activity.teachSkills ?? 0)}</p><p>Learning goals: {String(activity.learningGoals ?? 0)}</p><p>Exchange requests: {String(activity.exchangeRequests ?? 0)}</p><p>Learning sessions: {String(activity.sessions ?? 0)}</p></div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><p>Teaching skills: {String(activity.teachSkills ?? 0)}</p><p>Learning goals: {String(activity.learningGoals ?? 0)}</p><p>Exchange requests: {String(activity.exchangeRequests ?? 0)}</p><p>Learning sessions: {String(activity.sessions ?? 0)}</p><p>Last active: {String(activity.lastActiveAt || "Not recorded")}</p></div>
+      <section><h3 className="font-semibold text-ink">Career roadmaps ({roadmapRows.length})</h3>{roadmapRows.length ? <ul className="mt-2 divide-y divide-ink/10">{roadmapRows.map((roadmap, index) => <li key={`${String(roadmap.goal)}-${index}`} className="py-3"><p className="font-medium">{String(roadmap.goal)}</p><p className="mt-1 text-xs leading-5 text-slate-600">{String(roadmap.roleSummary)}</p><p className="mt-1 text-xs text-slate-500">Study blocks: {String(roadmap.completedTasks)}/{String(roadmap.totalTasks)} complete · Updated {String(roadmap.updatedAt)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No roadmaps generated yet.</p>}</section>
       <section><h3 className="font-semibold text-ink">Skills ({skillRows.length})</h3>{skillRows.length ? <ul className="mt-2 grid gap-2 sm:grid-cols-2">{skillRows.map((skill) => <li key={String(skill.id)} className="rounded-lg border border-ink/10 bg-white p-3"><p className="font-semibold">{String(skill.name)} <span className="font-normal text-slate-500">· {skill.kind === "teach" ? "Teaches" : "Wants to learn"}</span></p><p className="mt-1 text-xs text-slate-600">{String(skill.category)} · {String(skill.experienceLevel)} · {String(skill.instructionLanguage)}</p><p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">{String(skill.description)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No skills added.</p>}</section>
       <section><h3 className="font-semibold text-ink">Exchange requests ({requestRows.length})</h3>{requestRows.length ? <ul className="mt-2 divide-y divide-ink/10">{requestRows.map((request) => <li key={String(request.id)} className="py-2"><span className="font-medium">{String(request.direction)} · {String(request.skillName)}</span><span className="ml-2 rounded-full bg-white px-2 py-1 text-xs">{String(request.status)}</span><p className="mt-1 text-xs text-slate-500">{String(request.senderName)} → {String(request.recipientName)} · {String(request.createdAt)}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No exchange requests.</p>}</section>
       <section><h3 className="font-semibold text-ink">Learning sessions ({sessionRows.length})</h3>{sessionRows.length ? <ul className="mt-2 divide-y divide-ink/10">{sessionRows.map((session) => <li key={String(session.id)} className="py-2"><span className="font-medium">{String(session.title || session.skillName)}</span><span className="ml-2 rounded-full bg-white px-2 py-1 text-xs">{String(session.status)} · {String(session.role)}</span><p className="mt-1 text-xs text-slate-500">Skill: {String(session.skillName)} · with {String(session.counterpartName)} · {String(session.scheduledAt || session.completedAt || "Not scheduled")}{session.cancelledAt ? ` · Cancelled ${String(session.cancelledAt)}` : ""}</p></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">No scheduled sessions.</p>}</section>

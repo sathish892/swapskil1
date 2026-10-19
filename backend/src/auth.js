@@ -133,6 +133,8 @@ export function requireAuth(database) {
       const token = readSessionToken(request);
       database.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
         .run(Date.now() + sessionTtlMs, authenticated.tokenHash);
+      database.prepare("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_active_at IS NULL OR last_active_at < datetime('now', '-1 minute'))")
+        .run(authenticated.user.id);
       setSessionCookie(response, token, request.app.locals.cookieSecure, Math.floor(sessionTtlMs / 1000));
       request.user = authenticated.user;
       request.sessionTokenHash = authenticated.tokenHash;

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 15;
+const DATABASE_VERSION = 16;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -434,6 +434,26 @@ export function migrateDatabase(database) {
         UPDATE profiles SET profile_completed_at = updated_at
         WHERE trim(bio) <> '' OR trim(institution) <> '' OR trim(department) <> '' OR trim(location) <> '' OR interests <> '[]';
         PRAGMA user_version = 15;
+      `);
+    }
+    if (currentVersion < 16) {
+      database.exec(`
+        ALTER TABLE users ADD COLUMN last_active_at TEXT;
+        CREATE TABLE career_roadmaps (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role_key TEXT NOT NULL,
+          goal TEXT NOT NULL CHECK (length(goal) BETWEEN 2 AND 180),
+          form_json TEXT NOT NULL,
+          plan_json TEXT NOT NULL,
+          references_json TEXT NOT NULL DEFAULT '[]',
+          completed_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, role_key)
+        );
+        CREATE INDEX idx_career_roadmaps_user_updated ON career_roadmaps(user_id, updated_at DESC);
+        PRAGMA user_version = 16;
       `);
     }
     database.exec("COMMIT;");

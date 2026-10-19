@@ -61,10 +61,17 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
     } catch (err) { setError(err instanceof Error ? err.message : "Could not analyze your career goal. Please try again."); }
     finally { setBusy(false); }
   }
-  const toggle = (id: string) => setRoadmaps((current) => {
-    const plan = current[activeRole]; if (!plan) return current;
-    return { ...current, [activeRole]: { ...plan, tasks: plan.tasks.map((task) => task.id === id ? { ...task, done: !task.done } : task) } };
-  });
+  const toggle = (id: string) => {
+    if (!saved) return;
+    const tasks = saved.tasks.map((task) => task.id === id ? { ...task, done: !task.done } : task);
+    setRoadmaps((current) => ({ ...current, [activeRole]: { ...saved, tasks } }));
+    void fetch(`/api/career-roadmaps/${encodeURIComponent(activeRole)}/progress`, {
+      method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completedTaskIds: tasks.filter((task) => task.done).map((task) => task.id) }),
+    }).then(async (response) => {
+      if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || "Progress could not be synced."); }
+    }).catch((cause) => setError(cause instanceof Error ? `${cause.message} Your local progress is still saved on this device.` : "Progress could not sync to your account."));
+  };
 
   return <WorkspaceShell user={user} title="Career roadmap" eyebrow="AI powered career planning" description="Tell us what work you want to do, what you already know, what interests you, and how much time you can study. The AI researches the role and builds a paced plan with references." onLogout={onLogout} loggingOut={loggingOut} logoutError={logoutError}>
     <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">

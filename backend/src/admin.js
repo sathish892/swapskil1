@@ -105,14 +105,14 @@ export function createModerationRouter(database) {
     if (role) { where.push("u.role = ?"); args.push(role); }
     const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     const total = database.prepare(`SELECT COUNT(*) count FROM users u${clause}`).get(...args).count;
-    const users = database.prepare(`SELECT u.id, u.full_name AS fullName, u.email, u.role, u.status, u.created_at AS createdAt,
+    const users = database.prepare(`SELECT u.id, u.full_name AS fullName, u.email, u.role, u.status, u.created_at AS createdAt, u.last_active_at AS lastActiveAt,
       u.suspended_at AS suspendedAt, u.suspension_reason AS suspensionReason, u.removed_at AS removedAt, u.removal_reason AS removalReason
       FROM users u${clause} ORDER BY u.created_at DESC, u.id LIMIT ? OFFSET ?`).all(...args, paging.limit, paging.offset);
     res.json({ users, total, ...paging });
   });
 
   admin.get("/users/:id", (req, res) => {
-    const user = database.prepare(`SELECT id, full_name AS fullName, email, role, status, created_at AS createdAt,
+    const user = database.prepare(`SELECT id, full_name AS fullName, email, role, status, created_at AS createdAt, last_active_at AS lastActiveAt,
       suspended_at AS suspendedAt, suspension_reason AS suspensionReason, removed_at AS removedAt, removal_reason AS removalReason
       FROM users WHERE id = ?`).get(req.params.id);
     if (!user) return res.status(404).json({ error: "User not found." });
@@ -121,7 +121,16 @@ export function createModerationRouter(database) {
       learningGoals: database.prepare("SELECT COUNT(*) count FROM skills WHERE user_id = ? AND kind = 'learn'").get(user.id).count,
       exchangeRequests: database.prepare("SELECT COUNT(*) count FROM exchange_requests WHERE sender_user_id = ? OR recipient_user_id = ?").get(user.id, user.id).count,
       sessions: database.prepare("SELECT COUNT(*) count FROM learning_session_participants WHERE user_id = ?").get(user.id).count,
+      lastActiveAt: user.lastActiveAt,
     };
+    const roadmaps = database.prepare(`SELECT goal, plan_json AS planJson, completed_json AS completedJson,
+      created_at AS createdAt, updated_at AS updatedAt FROM career_roadmaps WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100`).all(user.id).map((row) => {
+      let plan = {}; let completed = [];
+      try { plan = JSON.parse(row.planJson); } catch { /* Ignore malformed historical data. */ }
+      try { completed = JSON.parse(row.completedJson); } catch { /* Ignore malformed historical data. */ }
+      const totalTasks = Array.isArray(plan.phases) ? plan.phases.reduce((sum, phase) => sum + (Array.isArray(phase.sessions) ? phase.sessions.length : 0), 0) : 0;
+      return { goal: row.goal, roleSummary: text(plan.roleSummary, 1200), totalTasks, completedTasks: Array.isArray(completed) ? completed.filter((index) => Number.isInteger(index) && index >= 0 && index < totalTasks).length : 0, createdAt: row.createdAt, updatedAt: row.updatedAt };
+    });
     const skills = database.prepare(`SELECT id, kind, name, category, experience_level AS experienceLevel,
       instruction_language AS instructionLanguage, description, created_at AS createdAt, updated_at AS updatedAt
       FROM skills WHERE user_id = ? ORDER BY kind, lower(name), id`).all(user.id);
@@ -149,7 +158,7 @@ export function createModerationRouter(database) {
       p.role, (SELECT COUNT(*) FROM open_learning_room_participants allp WHERE allp.room_id = r.id) AS participantCount
       FROM open_learning_rooms r JOIN open_learning_room_participants p ON p.room_id = r.id
       WHERE p.user_id = ? ORDER BY r.starts_at DESC, r.id DESC LIMIT 100`).all(user.id);
-    res.json({ user, activity, skills, requests, sessions, openRooms });
+    res.json({ user, activity, roadmaps, skills, requests, sessions, openRooms });
   });
 
   admin.patch("/users/:id", mutateLimit, (req, res) => {
