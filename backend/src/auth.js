@@ -127,6 +127,13 @@ export function requireAuth(database) {
         clearSessionCookie(response, request.app.locals.cookieSecure);
         return response.status(401).json({ error: "Authentication required." });
       }
+      // Keep active learners signed in. Refresh both the server-side expiry and
+      // the browser cookie so closing the tab does not end their session.
+      const sessionTtlMs = request.app.locals.sessionTtlMs || 30 * 24 * 60 * 60 * 1000;
+      const token = readSessionToken(request);
+      database.prepare("UPDATE sessions SET expires_at = ? WHERE token_hash = ?")
+        .run(Date.now() + sessionTtlMs, authenticated.tokenHash);
+      setSessionCookie(response, token, request.app.locals.cookieSecure, Math.floor(sessionTtlMs / 1000));
       request.user = authenticated.user;
       request.sessionTokenHash = authenticated.tokenHash;
       return next();

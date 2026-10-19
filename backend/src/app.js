@@ -23,7 +23,7 @@ export function createApp(database, options = {}) {
     : ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"];
   const allowedOrigins = new Set(options.allowedOrigins ?? [...defaultOrigins, ...configuredOrigins]);
   const configuredRateLimit = Number.parseInt(process.env.AUTH_RATE_LIMIT || "10", 10);
-  const configuredSessionHours = Number.parseInt(process.env.SESSION_TTL_HOURS || "168", 10);
+  const configuredSessionHours = Number.parseInt(process.env.SESSION_TTL_HOURS || "720", 10);
   const rateLimitCount = options.rateLimitCount ?? (
     Number.isInteger(configuredRateLimit) && configuredRateLimit > 0 ? configuredRateLimit : 10
   );
@@ -35,6 +35,7 @@ export function createApp(database, options = {}) {
   app.locals.cookieSecure = options.cookieSecure ?? (
     process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true"
   );
+  app.locals.sessionTtlMs = sessionTtlMs;
 
   app.use((request, response, next) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
