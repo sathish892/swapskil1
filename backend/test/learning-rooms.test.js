@@ -34,6 +34,24 @@ test("open room listing returns only rooms inside their active time window", () 
   });
 });
 
+test("open room listing does not compare timestamp columns to text parameters", () => {
+  const now = Date.UTC(2026, 0, 1, 12);
+  let query = "";
+  let parameters = null;
+  const database = {
+    prepare(sql) {
+      query = sql;
+      return { all(...values) { parameters = values; return []; } };
+    },
+  };
+
+  assert.deepEqual(findOpenRooms(database, now), []);
+  assert.match(query, /WHERE status = 'open'/);
+  assert.match(query, /LIMIT 1000$/);
+  assert.doesNotMatch(query, /starts_at\s*[<>]=?\s*\?/i);
+  assert.deepEqual(parameters, []);
+});
+
 test("meeting chat history query is portable and returns oldest-to-newest messages", () => {
   withDatabase((database) => {
     const senderId = randomUUID();

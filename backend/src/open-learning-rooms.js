@@ -40,12 +40,13 @@ export function findOpenRooms(database, now = Date.now()) {
   // Keep this query portable across SQLite and Postgres. The SQLite-style
   // datetime(..., '+N minutes') expression previously became a
   // timestamptz-vs-text comparison in Postgres and made the rooms page fail.
-  // All rooms are at most four hours long, so earlier starts cannot still be
-  // open and can be excluded before fetching rows.
-  const earliestStart = new Date(now - 240 * 60_000).toISOString();
+  // Supabase installations created before the app migration may store starts_at
+  // as timestamptz while the current SQLite-derived schema uses text. Even a
+  // parameterized comparison against a JS ISO string fails on the former, so
+  // fetch a bounded set of recent open rooms and compare timestamps in JS.
   return database.prepare(
-    selectRoom + "WHERE status = 'open' AND starts_at >= ? ORDER BY starts_at DESC, created_at DESC",
-  ).all(earliestStart)
+    selectRoom + "WHERE status = 'open' ORDER BY starts_at DESC, created_at DESC LIMIT 1000",
+  ).all()
     .filter((room) => roomIsOpen(room, now))
     .slice(0, 100);
 }
