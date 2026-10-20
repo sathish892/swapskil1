@@ -12,6 +12,7 @@ const learnerId = randomUUID();
 const skillId = randomUUID();
 const roomId = randomUUID();
 const sessionToken = "learning-room-api-test-session";
+const teacherSessionToken = "learning-room-api-teacher-session";
 let server;
 let baseUrl;
 
@@ -28,6 +29,8 @@ before(async () => {
     .run(roomId, teacherId);
   database.prepare("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
     .run(createHash("sha256").update(sessionToken).digest("hex"), learnerId, Date.now(), Date.now() + 60 * 60_000);
+  database.prepare("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+    .run(createHash("sha256").update(teacherSessionToken).digest("hex"), teacherId, Date.now(), Date.now() + 60 * 60_000);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise((resolve, reject) => {
@@ -64,4 +67,25 @@ test("learner can load, join, and use an open learning room", async () => {
   const chatResponse = await fetch(`${baseUrl}/api/meetings/open-room/${roomId}/chat`, { headers });
   assert.equal(chatResponse.status, 200);
   assert.deepEqual((await chatResponse.json()).messages, []);
+});
+
+test("regular teacher account can create a room that a learner can join", async () => {
+  const teacherHeaders = { Cookie: `skillswap.sid=${teacherSessionToken}`, "Content-Type": "application/json" };
+  const createResponse = await fetch(`${baseUrl}/api/open-learning-rooms`, {
+    method: "POST",
+    headers: teacherHeaders,
+    body: JSON.stringify({ skillId, title: "Created in integration test", durationMinutes: 60 }),
+  });
+  assert.equal(createResponse.status, 201);
+  const { room } = await createResponse.json();
+  assert.equal(room.status, "open");
+  assert.equal(room.participants[0].id, teacherId);
+
+  const learnerResponse = await fetch(`${baseUrl}/api/open-learning-rooms/${room.id}/join`, {
+    method: "POST",
+    headers: { Cookie: `skillswap.sid=${sessionToken}` },
+  });
+  assert.equal(learnerResponse.status, 200);
+  const joinedRoom = (await learnerResponse.json()).room;
+  assert.deepEqual(new Set(joinedRoom.participants.map((participant) => participant.id)), new Set([teacherId, learnerId]));
 });
