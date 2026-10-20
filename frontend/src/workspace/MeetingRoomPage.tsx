@@ -36,6 +36,7 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   const [connectedPeers, setConnectedPeers] = useState<string[]>([]);
   const [connection, setConnection] = useState("Not in the meeting");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatError, setChatError] = useState("");
@@ -51,6 +52,7 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   const [endMessage, setEndMessage] = useState("");
   const [endError, setEndError] = useState("");
   const endRequestedRef = useRef(false);
+  const sessionLoadInFlightRef = useRef(false);
   const [clock, setClock] = useState(Date.now());
   const localVideo = useRef<HTMLVideoElement>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -103,22 +105,42 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   }, [openRoom, sessionUrl, sessionId]);
 
   const loadSession = useCallback(async () => {
-    const response = await fetch(sessionUrl, { credentials: "include" });
-    const payload = await readApi<{ session?: LearningSession; room?: LearningSession; error?: string }>(response);
-    const details = payload.session || payload.room;
-    if (!response.ok || !details) throw new Error(payload.error || "Learning session not found.");
-    setSession(details);
-    if (!openRoom && endRequestedRef.current && details.status === "completed") {
-      try { await loadEndReviews(); } catch { /* the regular sessions page remains available if this request fails */ }
+    if (sessionLoadInFlightRef.current) return;
+    sessionLoadInFlightRef.current = true;
+    try {
+      const response = await fetch(sessionUrl, { credentials: "include", signal: AbortSignal.timeout(45_000) });
+      const payload = await readApi<{ session?: LearningSession; room?: LearningSession; error?: string }>(response);
+      const details = payload.session || payload.room;
+      if (!response.ok || !details) throw new Error(payload.error || "Learning session not found.");
+      setSession(details);
+      setLoadError("");
+      if (!openRoom && endRequestedRef.current && details.status === "completed") {
+        try { await loadEndReviews(); } catch { /* the regular sessions page remains available if this request fails */ }
+      }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "TimeoutError") {
+        throw new Error("The learning server took too long to respond. Try loading the room again.");
+      }
+      throw cause;
+    } finally {
+      sessionLoadInFlightRef.current = false;
     }
   }, [sessionUrl, openRoom, sessionId, loadEndReviews]);
 
   useEffect(() => {
-    void loadSession().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Couldn’t load this session.")).finally(() => setLoading(false));
-    const timer = window.setInterval(() => { setClock(Date.now()); void loadSession().catch(() => {}); }, 15_000);
+    void loadSession().catch((cause: unknown) => setLoadError(cause instanceof Error ? cause.message : "Couldn’t load this session.")).finally(() => setLoading(false));
+    const timer = window.setInterval(() => { setClock(Date.now()); void loadSession().catch((cause: unknown) => setLoadError(cause instanceof Error ? cause.message : "Couldn’t load this session.")); }, 15_000);
     return () => window.clearInterval(timer);
   }, [loadSession]);
   useEffect(() => { if (localVideo.current) localVideo.current.srcObject = localStreamRef.current; }, [joined]);
+
+  const retryLoadSession = () => {
+    setLoading(true);
+    setLoadError("");
+    void loadSession()
+      .catch((cause: unknown) => setLoadError(cause instanceof Error ? cause.message : "Couldn’t load this learning room."))
+      .finally(() => setLoading(false));
+  };
 
   const closePeers = () => {
     for (const peer of peersRef.current.values()) { peer.ontrack = null; peer.onicecandidate = null; peer.close(); }
@@ -371,10 +393,10 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   const otherRemoteStreams = Object.values(remoteStreams).filter((participant) => participant.id !== teacherId);
 
   return <WorkspaceShell user={user} title="Online learning room" eyebrow="SkillSwap video room" description={openRoom ? "Learn live with the host and other students in this open room." : "Join the teacher and other learners in your accepted skill exchange room."} onLogout={onLogout} loggingOut={loggingOut} logoutError={logoutError}>
-    {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
+    {error && session && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
     {endError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{endError}</p>}
     {endMessage && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{endMessage}</p>}
-    {loading ? <p role="status" className="rounded-2xl border border-ink/10 bg-white p-6 text-sm text-slate-600">Loading room details…</p> : !session ? <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">This learning room is unavailable.</div> : <>
+    {loading ? <p role="status" className="rounded-2xl border border-ink/10 bg-white p-6 text-sm text-slate-600">Loading room details… If this is the first visit, the learning server may take a little while to wake up.</p> : !session ? <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">{loadError || "This learning room is unavailable."}<button type="button" onClick={retryLoadSession} className="ml-3 inline-flex min-h-9 items-center rounded-full border border-red-300 bg-white px-4 text-sm font-semibold text-red-900 hover:bg-red-100">Try again</button></div> : <>
       <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-ink/10 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{session.meetingStatus}</p><h2 className="mt-1 font-display text-xl font-semibold">{session.title}</h2><p className="mt-1 text-sm text-slate-600">{session.skill || session.skillName || "Learning session"} · {session.durationMinutes} minutes · {session.scheduledAt ? formatTime(new Date(session.scheduledAt)) : "Not scheduled"}</p></div><a href="/learning-rooms" className="inline-flex min-h-10 items-center rounded-full border border-ink/15 px-4 text-sm font-semibold">Back to learning rooms</a></div>
       {session.description && <p className="mb-5 rounded-xl bg-white p-4 text-sm leading-6 text-slate-700">{session.description}</p>}
       <section aria-label="Meeting video" className="space-y-4">
