@@ -15,8 +15,15 @@ type View = "teach" | "learn" | "matches";
 export function ExplorePage({ user, onLogout, loggingOut, logoutError }: {
   user: PublicUser; onLogout: () => void; loggingOut: boolean; logoutError: string;
 }) {
-  const [view, setView] = useState<View>("teach");
-  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>(() => {
+    const requested = new URLSearchParams(window.location.search).get("view");
+    return requested === "learn" || requested === "matches" ? requested : "teach";
+  });
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") || "");
+  const [roadmapGoal] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("roadmapChallenge") === "1" ? params.get("q") || "your career goal" : "";
+  });
   const [category, setCategory] = useState("");
   const [level, setLevel] = useState("");
   const [language, setLanguage] = useState("");
@@ -91,6 +98,7 @@ export function ExplorePage({ user, onLogout, loggingOut, logoutError }: {
     <div className="space-y-5">
       {requestError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{requestError}</p>}
       {requestMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">{requestMessage} <a href="/requests" className="ml-1 underline underline-offset-2">View requests</a></p>}
+      {roadmapGoal && <div className="rounded-2xl border border-emerald-900/10 bg-[#eaf1e5] p-4 sm:p-5"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-800">Roadmap peer challenge</p><h2 className="mt-1 font-display text-lg font-semibold text-ink">Find someone who can help with “{roadmapGoal}”</h2><p className="mt-1 text-sm leading-6 text-slate-700">We searched students who can teach related skills. Send an exchange request to learn together, then use the shared challenge steps from your roadmap.</p></div>}
       <div className="rounded-3xl border border-ink/10 bg-white p-4 shadow-sm sm:p-6">
         <div role="tablist" aria-label="Explore skill views" className="mb-5 flex flex-wrap gap-2">
           {([["teach", "Can teach"], ["learn", "Wants to learn"], ["matches", "Suggested matches"]] as const).map(([value, label]) =>

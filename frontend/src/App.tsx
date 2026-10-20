@@ -406,7 +406,12 @@ function NotFound() {
 }
 
 function App() {
-  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const [route, setRoute] = useState(() => ({
+    path: window.location.pathname.replace(/\/+$/, "") || "/",
+    search: window.location.search,
+  }));
+  const path = route.path;
+  const locationKey = route.path + route.search;
   const publicProfileId = (() => {
     const prefix = "/students/";
     if (!path.startsWith(prefix) || path.slice(prefix.length).includes("/")) return "";
@@ -425,6 +430,33 @@ function App() {
   const [profileComplete, setProfileComplete] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+
+  useEffect(() => {
+    const updateRoute = () => setRoute({
+      path: window.location.pathname.replace(/\/+$/, "") || "/",
+      search: window.location.search,
+    });
+    const handleClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (!(event.target instanceof Element)) return;
+      const anchor = event.target.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || anchor.hasAttribute("download") || (anchor.target && anchor.target !== "_self")) return;
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin !== window.location.origin) return;
+      const nextPath = destination.pathname.replace(/\/+$/, "") || "/";
+      if (nextPath === route.path && destination.search === route.search) return;
+      event.preventDefault();
+      window.history.pushState({}, "", destination.href);
+      setRoute({ path: nextPath, search: destination.search });
+      if (destination.hash) requestAnimationFrame(() => document.getElementById(decodeURIComponent(destination.hash.slice(1)))?.scrollIntoView());
+    };
+    document.addEventListener("click", handleClick);
+    window.addEventListener("popstate", updateRoute);
+    return () => {
+      document.removeEventListener("click", handleClick);
+      window.removeEventListener("popstate", updateRoute);
+    };
+  }, [route.path, route.search]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -503,12 +535,12 @@ function App() {
   if (user && isAuthPage) return <AuthLoading />;
   if (isProtectedPath && !user) return <AuthLoading />;
   if (path === "/admin" && user?.role === "admin") return <AdminDashboardPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
-  if (path === "/explore" && user) return <ExplorePage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
+  if (path === "/explore" && user) return <ExplorePage key={locationKey} user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/requests" && user) return <RequestsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/sessions" && user) return <SessionsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/students" && user) return <StudentRankingsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/roadmap" && user) return <RoadmapPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
-  if (path === "/messages" && user) return <MessagesPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
+  if (path === "/messages" && user) return <MessagesPage key={locationKey} user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (path === "/learning-rooms" && user) return <LearningRoomsPage user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (learningRoomId && user) return <MeetingRoomPage sessionId={learningRoomId} openRoom={learningRoomId.startsWith("open-")} user={user} onLogout={logout} loggingOut={loggingOut} logoutError={logoutError} />;
   if (publicProfileId) return <PublicProfilePage profileId={publicProfileId} user={user} />;
