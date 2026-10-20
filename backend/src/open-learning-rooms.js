@@ -23,11 +23,19 @@ export const hasOpenRoomAccess = (database, roomId, userId) => Boolean(database.
 ).get(roomId, userId));
 
 function roomParticipants(database, roomId) {
-  return database.prepare(
+  const participants = database.prepare(
     "SELECT p.user_id AS id, u.full_name AS fullName, p.role FROM open_learning_room_participants p " +
     "JOIN users u ON u.id = p.user_id WHERE p.room_id = ? AND p.left_at IS NULL " +
     "ORDER BY CASE p.role WHEN 'teacher' THEN 0 ELSE 1 END, p.joined_at, lower(u.full_name)",
   ).all(roomId);
+  // PostgreSQL folds unquoted aliases to lowercase (`fullName` becomes
+  // `fullname`), while SQLite preserves the alias. Keep this API shape
+  // consistent so the meeting page can safely render participant names.
+  return participants.map((participant) => ({
+    id: participant.id,
+    fullName: participant.fullName ?? participant.fullname ?? "Student",
+    role: participant.role,
+  }));
 }
 
 function roomIsOpen(room, now = Date.now()) {
