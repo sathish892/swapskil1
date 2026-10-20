@@ -8,6 +8,16 @@ function roomAccess(database, type, id, userId) {
   return type === "session" ? hasAccess(database, id, userId) : hasOpenRoomAccess(database, id, userId);
 }
 
+export function loadMeetingMessages(database, type, id) {
+  // `rowid` is SQLite-only; message IDs provide a stable tie-breaker on both
+  // the local SQLite database and production Postgres.
+  return database.prepare(
+    "SELECT m.id, m.sender_user_id AS senderId, u.full_name AS senderName, m.body, m.created_at AS createdAt " +
+    "FROM meeting_chat_messages m JOIN users u ON u.id = m.sender_user_id " +
+    "WHERE m.room_type = ? AND m.room_id = ? ORDER BY m.created_at DESC, m.id DESC LIMIT 100",
+  ).all(type, id).reverse();
+}
+
 export function createMeetingCollaborationRouter(database) {
   const router = Router();
   router.use(requireAuth(database));
@@ -17,11 +27,7 @@ export function createMeetingCollaborationRouter(database) {
     if (!["session", "open-room"].includes(type) || !id || id.length > 100 || !roomAccess(database, type, id, req.user.id)) {
       return res.status(404).json({ error: "Meeting not found." });
     }
-    const messages = database.prepare(
-      "SELECT m.id, m.sender_user_id AS senderId, u.full_name AS senderName, m.body, m.created_at AS createdAt " +
-      "FROM meeting_chat_messages m JOIN users u ON u.id = m.sender_user_id " +
-      "WHERE m.room_type = ? AND m.room_id = ? ORDER BY m.created_at DESC, m.rowid DESC LIMIT 100",
-    ).all(type, id).reverse();
+    const messages = loadMeetingMessages(database, type, id);
     return res.json({ messages });
   });
 

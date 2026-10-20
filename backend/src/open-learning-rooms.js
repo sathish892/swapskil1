@@ -30,10 +30,24 @@ function roomParticipants(database, roomId) {
   ).all(roomId);
 }
 
-function roomIsOpen(room) {
+function roomIsOpen(room, now = Date.now()) {
   const start = Date.parse(room.starts_at);
   const end = start + room.duration_minutes * 60_000;
-  return room.status === "open" && Number.isFinite(start) && Date.now() <= end;
+  return room.status === "open" && Number.isFinite(start) && now >= start && now <= end;
+}
+
+export function findOpenRooms(database, now = Date.now()) {
+  // Keep this query portable across SQLite and Postgres. The SQLite-style
+  // datetime(..., '+N minutes') expression previously became a
+  // timestamptz-vs-text comparison in Postgres and made the rooms page fail.
+  // All rooms are at most four hours long, so earlier starts cannot still be
+  // open and can be excluded before fetching rows.
+  const earliestStart = new Date(now - 240 * 60_000).toISOString();
+  return database.prepare(
+    selectRoom + "WHERE status = 'open' AND starts_at >= ? ORDER BY starts_at DESC, created_at DESC",
+  ).all(earliestStart)
+    .filter((room) => roomIsOpen(room, now))
+    .slice(0, 100);
 }
 
 function publicRoom(database, room) {
@@ -60,16 +74,7 @@ export function createOpenLearningRoomsRouter(database) {
   const reviewLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
 
   router.get("/open-learning-rooms", (req, res) => {
-    // Keep this query portable across SQLite and Postgres. The SQLite-style
-    // datetime(..., '+N minutes') expression used here previously became a
-    // timestamptz-vs-text comparison in Postgres and returned HTTP 500, which
-    // made the Learning Rooms page show its generic error state.
-    const earliestStart = new Date(Date.now() - 240 * 60_000).toISOString();
-    const rooms = database.prepare(
-      selectRoom + "WHERE status = 'open' AND starts_at >= ? ORDER BY starts_at DESC, created_at DESC",
-    ).all(earliestStart)
-      .filter(roomIsOpen)
-      .slice(0, 100);
+    const rooms = findOpenRooms(database);
     return res.json({ rooms: rooms.map((room) => publicRoom(database, room)) });
   });
 

@@ -374,9 +374,22 @@ function Homepage({ user, onLogout, loggingOut, logoutError }: HomepageProps) {
 function AuthLoading() {
   return (
     <main className="grid min-h-screen place-items-center bg-paper px-5 text-center">
-      <p role="status" className="rounded-xl border border-ink/10 bg-white px-5 py-4 text-sm font-medium text-slate-600 shadow-sm">Checking your sign-in…</p>
+      <div role="status" className="max-w-md rounded-2xl border border-ink/10 bg-white px-6 py-5 text-sm text-slate-600 shadow-sm">
+        <p className="font-semibold text-ink">Checking your sign-in…</p>
+        <p className="mt-2 leading-6">The first connection can take longer while the learning server wakes up. Your profile and saved data remain safe.</p>
+      </div>
     </main>
   );
+}
+
+function AuthRetry({ onRetry }: { onRetry: () => void }) {
+  return <main className="grid min-h-screen place-items-center bg-paper px-5 text-center">
+    <section className="max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
+      <h1 className="font-display text-xl font-semibold text-ink">SkillSwap couldn’t connect</h1>
+      <p className="mt-2 text-sm leading-6 text-slate-600">Your sign-in and saved information have not been changed. Check your connection, then try again.</p>
+      <button type="button" onClick={onRetry} className="mt-4 min-h-11 rounded-full bg-forest px-5 text-sm font-semibold text-white">Try again</button>
+    </section>
+  </main>;
 }
 
 function NotFound() {
@@ -406,6 +419,8 @@ function App() {
   })();
   const [user, setUser] = useState<PublicUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState(false);
+  const [authAttempt, setAuthAttempt] = useState(0);
   const [profileReady, setProfileReady] = useState(false);
   const [profileComplete, setProfileComplete] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -413,14 +428,27 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/auth/me", { credentials: "include", signal: controller.signal })
-      .then(async (response) => {
-        if (response.status === 401) return null;
-        if (!response.ok) throw new Error("Could not validate the session.");
-        const payload = await readApi<{ user?: PublicUser }>(response);
-        return payload.user ?? null;
-      })
+    const checkSignIn = async () => {
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        if (controller.signal.aborted) return null;
+        try {
+          const response = await fetch("/api/auth/me", { credentials: "include", signal: controller.signal });
+          if (response.status === 401) return null;
+          if (!response.ok) throw new Error("Could not validate the session.");
+          const payload = await readApi<{ user?: PublicUser }>(response);
+          return payload.user ?? null;
+        } catch (cause) {
+          if (controller.signal.aborted) return null;
+          lastError = cause;
+          if (attempt < 9) await new Promise((resolve) => window.setTimeout(resolve, 5_000));
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error("Could not validate the session.");
+    };
+    checkSignIn()
       .then(async (currentUser) => {
+        if (controller.signal.aborted) return;
         setUser(currentUser);
         setProfileComplete(currentUser?.role !== "user" || currentUser.profileComplete === true);
         setProfileReady(true);
@@ -429,16 +457,17 @@ function App() {
         // React StrictMode aborts its first development-only effect run.
         // Ignore that cancellation so it cannot mark the user as logged out
         // before the replacement session check has finished.
-        if (!controller.signal.aborted) { setUser(null); setProfileComplete(true); setProfileReady(true); }
+        if (!controller.signal.aborted) setAuthError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setAuthReady(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [authAttempt]);
 
   useEffect(() => {
     if (!authReady) return;
+    if (authError) return;
     if (user?.role === "admin" && path !== "/admin") {
       window.location.replace("/admin");
     } else if (user?.role === "user" && profileReady && !profileComplete && path !== "/profile") {
@@ -450,7 +479,7 @@ function App() {
     } else if (!user && (["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/roadmap", "/admin"].includes(path) || Boolean(learningRoomId))) {
       window.location.replace(`/login?redirect=${encodeURIComponent(path)}`);
     }
-  }, [authReady, profileReady, profileComplete, user, path]);
+  }, [authReady, profileReady, profileComplete, user, path, authError]);
 
   const logout = async () => {
     setLogoutError("");
@@ -468,6 +497,7 @@ function App() {
 
   const isAuthPage = path === "/login" || path === "/register";
   const isProtectedPath = ["/account", "/profile", "/my-skills", "/explore", "/requests", "/sessions", "/students", "/messages", "/learning-rooms", "/roadmap", "/admin"].includes(path) || Boolean(learningRoomId);
+  if (authError) return <AuthRetry onRetry={() => { setAuthError(false); setAuthReady(false); setProfileReady(false); setAuthAttempt((attempt) => attempt + 1); }} />;
   if ((!authReady || (user?.role === "user" && !profileReady)) && (isAuthPage || isProtectedPath || Boolean(user))) return <AuthLoading />;
   if (user?.role === "user" && profileReady && !profileComplete && path !== "/profile") return <AuthLoading />;
   if (user && isAuthPage) return <AuthLoading />;
