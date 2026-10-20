@@ -60,9 +60,16 @@ export function createOpenLearningRoomsRouter(database) {
   const reviewLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
 
   router.get("/open-learning-rooms", (req, res) => {
+    // Keep this query portable across SQLite and Postgres. The SQLite-style
+    // datetime(..., '+N minutes') expression used here previously became a
+    // timestamptz-vs-text comparison in Postgres and returned HTTP 500, which
+    // made the Learning Rooms page show its generic error state.
+    const earliestStart = new Date(Date.now() - 240 * 60_000).toISOString();
     const rooms = database.prepare(
-      selectRoom + "WHERE status = 'open' AND datetime(starts_at, '+' || duration_minutes || ' minutes') > datetime('now') ORDER BY starts_at, created_at DESC LIMIT 100",
-    ).all();
+      selectRoom + "WHERE status = 'open' AND starts_at >= ? ORDER BY starts_at DESC, created_at DESC",
+    ).all(earliestStart)
+      .filter(roomIsOpen)
+      .slice(0, 100);
     return res.json({ rooms: rooms.map((room) => publicRoom(database, room)) });
   });
 

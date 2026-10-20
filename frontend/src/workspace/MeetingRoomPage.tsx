@@ -4,7 +4,7 @@ import { WorkspaceShell } from "./WorkspaceShell";
 import { readApi } from "./types";
 
 type Participant = { id: string; fullName: string; role: string };
-type LearningSession = { id: string; title: string; skill: string; description: string; scheduledAt: string | null; durationMinutes: number; meetingStatus: string; status?: string; cancelledAt: string | null; createdBy: string | null; participants: Participant[] };
+type LearningSession = { id: string; title: string; skill?: string; skillName?: string; description: string; scheduledAt: string | null; durationMinutes: number; meetingStatus: string; status?: string; cancelledAt: string | null; createdBy: string | null; participants: Participant[] };
 type EndReview = { sessionId?: string; roomId?: string; skillName: string; ratingType: "teacher" | "learner"; recipient: { id: string; fullName: string } };
 type ChatMessage = { id: string; senderId: string; senderName: string; body: string; createdAt: string };
 type Signal = { type: string; from?: string; fromName?: string; participant?: { id: string; fullName: string }; participants?: { id: string; fullName: string }[]; participantId?: string; message?: string; chatMessage?: ChatMessage; payload?: RTCSessionDescriptionInit | RTCIceCandidateInit };
@@ -370,12 +370,12 @@ export function MeetingRoomPage({ sessionId, openRoom = false, user, onLogout, l
   const teacherRemote = teacherId ? remoteStreams[teacherId] : undefined;
   const otherRemoteStreams = Object.values(remoteStreams).filter((participant) => participant.id !== teacherId);
 
-  return <WorkspaceShell user={user} title="Online learning room" eyebrow="SkillSwap video room" description="Join the teacher and other learners in your accepted skill exchange room." onLogout={onLogout} loggingOut={loggingOut} logoutError={logoutError}>
+  return <WorkspaceShell user={user} title="Online learning room" eyebrow="SkillSwap video room" description={openRoom ? "Learn live with the host and other students in this open room." : "Join the teacher and other learners in your accepted skill exchange room."} onLogout={onLogout} loggingOut={loggingOut} logoutError={logoutError}>
     {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
     {endError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{endError}</p>}
     {endMessage && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{endMessage}</p>}
     {loading ? <p role="status" className="rounded-2xl border border-ink/10 bg-white p-6 text-sm text-slate-600">Loading room details…</p> : !session ? <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">This learning room is unavailable.</div> : <>
-      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-ink/10 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{session.meetingStatus}</p><h2 className="mt-1 font-display text-xl font-semibold">{session.title}</h2><p className="mt-1 text-sm text-slate-600">{session.skill} · {session.durationMinutes} minutes · {session.scheduledAt ? formatTime(new Date(session.scheduledAt)) : "Not scheduled"}</p></div><a href="/learning-rooms" className="inline-flex min-h-10 items-center rounded-full border border-ink/15 px-4 text-sm font-semibold">Leave room page</a></div>
+      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-ink/10 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{session.meetingStatus}</p><h2 className="mt-1 font-display text-xl font-semibold">{session.title}</h2><p className="mt-1 text-sm text-slate-600">{session.skill || session.skillName || "Learning session"} · {session.durationMinutes} minutes · {session.scheduledAt ? formatTime(new Date(session.scheduledAt)) : "Not scheduled"}</p></div><a href="/learning-rooms" className="inline-flex min-h-10 items-center rounded-full border border-ink/15 px-4 text-sm font-semibold">Back to learning rooms</a></div>
       {session.description && <p className="mb-5 rounded-xl bg-white p-4 text-sm leading-6 text-slate-700">{session.description}</p>}
       <section aria-label="Meeting video" className="space-y-4">
         <div className="relative mx-auto w-full max-w-5xl overflow-hidden rounded-3xl bg-[#172b27] text-white">
