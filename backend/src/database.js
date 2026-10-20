@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { PostgresSyncDatabase } from "./postgres-database.js";
 
 const backendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DATABASE_VERSION = 17;
+const DATABASE_VERSION = 18;
 
 export function openDatabase(
   configuredPath = process.env.SQLITE_DB_PATH || "../database/skillswap.sqlite",
@@ -460,6 +460,12 @@ export function migrateDatabase(database) {
     if (currentVersion < 17) {
       database.exec("PRAGMA user_version = 17;");
     }
+    if (currentVersion < 18) {
+      database.exec(`
+        ALTER TABLE career_roadmaps ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}';
+        PRAGMA user_version = 18;
+      `);
+    }
     database.exec("COMMIT;");
   } catch (error) {
     database.exec("ROLLBACK;");
@@ -563,12 +569,15 @@ function initializePostgresDatabase(connectionString, configuredPath) {
       }
     } else {
       const version = database.prepare("SELECT version FROM skillswap_schema_meta LIMIT 1").get()?.version;
-      if (version === 16) {
+      if (version === 16 || version === 17) {
         database.exec("BEGIN");
         try {
+          if (version === 16) database.exec(`
+              ALTER TABLE sessions ALTER COLUMN created_at TYPE BIGINT;
+              ALTER TABLE sessions ALTER COLUMN expires_at TYPE BIGINT;
+            `);
           database.exec(`
-            ALTER TABLE sessions ALTER COLUMN created_at TYPE BIGINT;
-            ALTER TABLE sessions ALTER COLUMN expires_at TYPE BIGINT;
+            ALTER TABLE career_roadmaps ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '{}';
             UPDATE skillswap_schema_meta SET version = ${DATABASE_VERSION};
           `);
           database.exec("COMMIT");

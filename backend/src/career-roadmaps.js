@@ -81,17 +81,60 @@ export function createCareerRoadmapsRouter(database) {
   router.use(requireAuth(database));
   router.use("/career-roadmaps/generate", rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "You've reached the hourly roadmap limit. Please try again later." } }));
 
+  router.get("/career-roadmaps", (req, res) => {
+    const rows = database.prepare("SELECT role_key, goal, form_json, plan_json, references_json, completed_json, evidence_json, updated_at FROM career_roadmaps WHERE user_id = ? ORDER BY updated_at DESC").all(req.user.id);
+    const roadmaps = rows.map((row) => {
+      let completedIndexes = [];
+      let evidence = {};
+      try { completedIndexes = JSON.parse(row.completed_json || "[]"); } catch { /* Ignore invalid legacy progress. */ }
+      try { evidence = JSON.parse(row.evidence_json || "{}"); } catch { /* Ignore invalid legacy evidence. */ }
+      return {
+        roleKey: row.role_key,
+        goal: row.goal,
+        form: JSON.parse(row.form_json),
+        plan: JSON.parse(row.plan_json),
+        references: JSON.parse(row.references_json || "[]"),
+        completedTaskIds: Array.isArray(completedIndexes) ? completedIndexes.filter(Number.isInteger).map((index) => `task-${index}`) : [],
+        evidence: evidence && typeof evidence === "object" && !Array.isArray(evidence) ? evidence : {},
+        updatedAt: row.updated_at,
+      };
+    });
+    return res.json({ roadmaps });
+  });
+
   router.patch("/career-roadmaps/:roleKey/progress", (req, res) => {
     const roleKey = clean(req.params.roleKey, 180);
     const completed = req.body?.completedTaskIds;
     if (!roleKey || !Array.isArray(completed) || completed.length > 500 || completed.some((id) => typeof id !== "string" || !/^task-\d{1,4}$/.test(id))) {
       return res.status(400).json({ error: "Invalid roadmap progress update." });
     }
+    let evidenceJson;
+    if (Object.hasOwn(req.body || {}, "evidence")) {
+      const evidence = req.body.evidence;
+      if (!evidence || typeof evidence !== "object" || Array.isArray(evidence) || Object.keys(evidence).length > 500) {
+        return res.status(400).json({ error: "Invalid portfolio proof links." });
+      }
+      const cleanedEvidence = {};
+      for (const [id, value] of Object.entries(evidence)) {
+        if (!/^task-\d{1,4}$/.test(id) || typeof value !== "string" || value.length > 2048) {
+          return res.status(400).json({ error: "Each proof must be a valid HTTPS link for a roadmap task." });
+        }
+        if (value.trim()) {
+          const safeUrl = safeHttpsUrl(value.trim());
+          if (!safeUrl) return res.status(400).json({ error: "Proof links must start with https://." });
+          cleanedEvidence[id] = safeUrl;
+        }
+      }
+      evidenceJson = JSON.stringify(cleanedEvidence);
+    }
     const roadmap = database.prepare("SELECT id FROM career_roadmaps WHERE user_id = ? AND role_key = ?").get(req.user.id, roleKey);
     if (!roadmap) return res.status(404).json({ error: "Saved roadmap not found." });
     const indexes = [...new Set(completed.map((id) => Number(id.slice(5))))];
-    database.prepare("UPDATE career_roadmaps SET completed_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-      .run(JSON.stringify(indexes), roadmap.id);
+    if (evidenceJson === undefined) {
+      database.prepare("UPDATE career_roadmaps SET completed_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(indexes), roadmap.id);
+    } else {
+      database.prepare("UPDATE career_roadmaps SET completed_json = ?, evidence_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(indexes), evidenceJson, roadmap.id);
+    }
     return res.json({ updated: true });
   });
 
@@ -133,7 +176,7 @@ export function createCareerRoadmapsRouter(database) {
       database.prepare(`INSERT INTO career_roadmaps (id, user_id, role_key, goal, form_json, plan_json, references_json)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, role_key) DO UPDATE SET goal=excluded.goal, form_json=excluded.form_json,
-          plan_json=excluded.plan_json, references_json=excluded.references_json, completed_json='[]', updated_at=CURRENT_TIMESTAMP`)
+          plan_json=excluded.plan_json, references_json=excluded.references_json, completed_json='[]', evidence_json='{}', updated_at=CURRENT_TIMESTAMP`)
         .run(randomUUID(), req.user.id, roleKey, goal, JSON.stringify({ goal, interests, knownSkills, hoursPerDay }), JSON.stringify(plan), JSON.stringify(savedReferences));
       return res.json({ plan, references: savedReferences, roleKey });
     } catch (error) {

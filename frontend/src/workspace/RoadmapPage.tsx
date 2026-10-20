@@ -10,7 +10,7 @@ type Phase = { title: string; purpose: string; sessions: Lesson[] };
 type Plan = { roleSummary: string; inputAnalysis: string; strengths: string[]; skillGaps: string[]; assumptions: string[]; phases: Phase[]; projects: string[] };
 type Reference = { title: string; url: string };
 type Task = { id: string; week: number; day: number; phase: string; phasePurpose: string; title: string; learnAt: string; learnUrl: string; steps: string[]; practice: string; deliverable: string; minutes: number; done: boolean };
-type Saved = { form: Form; plan: Plan; references: Reference[]; tasks: Task[] };
+type Saved = { form: Form; plan: Plan; references: Reference[]; tasks: Task[]; evidence?: Record<string, string> };
 type SavedRoadmaps = { activeRole: string; items: Record<string, Saved> };
 const defaultForm: Form = { goal: "", interests: "", knownSkills: "", hoursPerDay: 1.5 };
 const keyFor = (id: string) => `skillswap-career-roadmaps-v3:${id}`;
@@ -45,7 +45,31 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
   const saved = activeRole ? roadmaps[activeRole] ?? null : null;
   const [form, setForm] = useState<Form>(() => saved?.form ?? defaultForm); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [shareNotice, setShareNotice] = useState("");
+  const [savingProof, setSavingProof] = useState(""); const [proofNotice, setProofNotice] = useState("");
   useEffect(() => { try { if (Object.keys(roadmaps).length) localStorage.setItem(storageKey, JSON.stringify({ items: roadmaps, activeRole })); else localStorage.removeItem(storageKey); } catch { /* local storage is optional */ } }, [roadmaps, activeRole, storageKey]);
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/career-roadmaps", { credentials: "include" })
+      .then(async (response) => {
+        const payload = await readApi<{ roadmaps?: { goal: string; form: Form; plan: Plan; references?: Reference[]; completedTaskIds?: string[]; evidence?: Record<string, string> }[]; error?: string }>(response);
+        if (!response.ok) throw new Error(payload.error || "Could not load your saved roadmaps.");
+        if (!active) return;
+        const remoteItems: Record<string, Saved> = {};
+        for (const item of payload.roadmaps || []) {
+          if (!item.form?.goal || !item.plan?.phases) continue;
+          const id = roleKey(item.goal || item.form.goal);
+          const completed = new Set(item.completedTaskIds || []);
+          remoteItems[id] = { form: item.form, plan: item.plan, references: item.references || [], tasks: makeTasks(item.form, item.plan).map((task) => ({ ...task, done: completed.has(task.id) })), evidence: item.evidence || {} };
+        }
+        if (!Object.keys(remoteItems).length) return;
+        const first = Object.entries(remoteItems)[0];
+        setRoadmaps((current) => ({ ...current, ...remoteItems }));
+        setActiveRole((current) => current || first[0]);
+        setForm((current) => current.goal ? current : first[1].form);
+      })
+      .catch((cause) => { if (active && !(cause instanceof DOMException && cause.name === "AbortError")) setError(cause instanceof Error ? cause.message : "Could not load your saved roadmaps."); });
+    return () => { active = false; };
+  }, [storageKey]);
   const weeks = useMemo(() => saved ? Array.from({ length: Math.max(0, ...saved.tasks.map((task) => task.week)) }, (_, i) => ({ number: i + 1, tasks: saved.tasks.filter((task) => task.week === i + 1) })) : [], [saved]);
   const totalMinutes = saved?.tasks.reduce((sum, task) => sum + task.minutes, 0) ?? 0; const doneCount = saved?.tasks.filter((task) => task.done).length ?? 0;
   const update = <K extends keyof Form,>(name: K, value: Form[K]) => setForm((current) => ({ ...current, [name]: value }));
@@ -60,7 +84,7 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
       if (response.status === 401) { window.location.assign(`/login?redirect=${encodeURIComponent("/roadmap")}`); return; }
       if (!response.ok) throw new Error(payload.error || "Could not analyze your career goal.");
       if (!payload.plan || !Array.isArray(payload.plan.phases)) throw new Error("The roadmap response was incomplete. Please try again.");
-      const tasks = makeTasks(form, payload.plan); const id = roleKey(form.goal); setRoadmaps((current) => ({ ...current, [id]: { form, plan: payload.plan!, references: payload.references || [], tasks } })); setActiveRole(id);
+      const tasks = makeTasks(form, payload.plan); const id = roleKey(form.goal); setRoadmaps((current) => ({ ...current, [id]: { form, plan: payload.plan!, references: payload.references || [], tasks, evidence: {} } })); setActiveRole(id);
     } catch (err) { setError(err instanceof Error ? err.message : "Could not analyze your career goal. Please try again."); }
     finally { setBusy(false); }
   }
@@ -70,11 +94,52 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
     setRoadmaps((current) => ({ ...current, [activeRole]: { ...saved, tasks } }));
     void fetch(`/api/career-roadmaps/${encodeURIComponent(activeRole)}/progress`, {
       method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ completedTaskIds: tasks.filter((task) => task.done).map((task) => task.id) }),
+      body: JSON.stringify({ completedTaskIds: tasks.filter((task) => task.done).map((task) => task.id), evidence: saved.evidence || {} }),
     }).then(async (response) => {
       if (!response.ok) { const payload = await readApi<{ error?: string }>(response); throw new Error(payload.error || "Progress could not be synced."); }
     }).catch((cause) => setError(cause instanceof Error ? `${cause.message} Your local progress is still saved on this device.` : "Progress could not sync to your account."));
   };
+  function setEvidence(taskId: string, value: string) {
+    if (!saved) return;
+    setRoadmaps((current) => ({ ...current, [activeRole]: { ...saved, evidence: { ...(saved.evidence || {}), [taskId]: value } } }));
+    setProofNotice("");
+  }
+  async function saveEvidence(taskId: string) {
+    if (!saved) return;
+    setSavingProof(taskId); setError(""); setProofNotice("");
+    try {
+      const response = await fetch(`/api/career-roadmaps/${encodeURIComponent(activeRole)}/progress`, {
+        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completedTaskIds: saved.tasks.filter((task) => task.done).map((task) => task.id), evidence: saved.evidence || {} }),
+      });
+      const payload = await readApi<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || "Your portfolio proof could not be saved.");
+      setProofNotice("Proof link saved to your account.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Your proof link could not be saved. It is still on this device."); }
+    finally { setSavingProof(""); }
+  }
+  function exportPortfolio() {
+    if (!saved) return;
+    const completed = saved.tasks.filter((task) => task.done);
+    const content = [
+      `# ${saved.form.goal} — Learning Portfolio`,
+      "",
+      saved.plan.roleSummary,
+      "",
+      `Created with SkillSwap · ${completed.length} roadmap tasks completed`,
+      "",
+      ...completed.flatMap((task) => [
+        `## ${task.title}`,
+        `**Phase:** ${task.phase} · **Time:** ${timeLabel(task.minutes)}`,
+        `**What I made:** ${task.deliverable || task.practice || "Completed this learning task."}`,
+        saved.evidence?.[task.id] ? `**Proof:** ${saved.evidence[task.id]}` : "",
+        "",
+      ]),
+    ].filter((line) => line !== undefined).join("\n");
+    const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${roleKey(saved.form.goal).replace(/\s+/g, "-")}-learning-portfolio.md`; anchor.click();
+    URL.revokeObjectURL(url);
+  }
   async function shareChallenge(task: Task) {
     const partnerUrl = `${window.location.origin}/explore?view=teach&q=${encodeURIComponent(saved?.form.goal || "")}&roadmapChallenge=1`;
     const message = [
@@ -112,14 +177,14 @@ export function RoadmapPage({ user, onLogout, loggingOut, logoutError }: { user:
       <section aria-live="polite" className="min-w-0">
         {!saved ? <div className="rounded-2xl border border-dashed border-ink/15 bg-white p-8 text-center sm:p-12"><span className="mx-auto grid size-14 place-items-center rounded-2xl bg-[#e4f0dc] text-forest"><Icon name="sparkles" className="size-7" /></span><h2 className="mt-4 font-display text-xl font-semibold">Your career plan will appear here</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">We’ll research the role, compare it with what you know and enjoy, then shape a daily plan around your available study time.</p></div>
           : <div className="space-y-5">
-            <div className="rounded-2xl bg-forest p-5 text-white sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">AI role analysis · {saved.form.goal}</p><h2 className="mt-2 font-display text-2xl font-semibold">Your path, broken into doable steps</h2><p className="mt-2 text-sm leading-6 text-white/80">{saved.plan.roleSummary}</p></div><button type="button" onClick={() => setActiveRole("")} className="rounded-lg border border-white/25 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10">New roadmap</button></div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/10 p-3"><span className="block text-2xl font-semibold">{weeks.length}</span><span className="text-xs text-white/75">weeks estimated</span></div><div className="rounded-xl bg-white/10 p-3"><span className="block text-2xl font-semibold">{timeLabel(saved.form.hoursPerDay * 60)}</span><span className="text-xs text-white/75">per study day</span></div><div className="col-span-2 rounded-xl bg-white/10 p-3 sm:col-span-1"><span className="block text-2xl font-semibold">~{Math.ceil(totalMinutes / 60)}h</span><span className="text-xs text-white/75">estimated effort</span></div></div><div className="mt-5"><div className="mb-1.5 flex justify-between text-xs text-white/80"><span>Progress</span><span>{doneCount}/{saved.tasks.length} blocks · {saved.tasks.length ? Math.round(doneCount / saved.tasks.length * 100) : 0}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-lime" style={{ width: `${saved.tasks.length ? doneCount / saved.tasks.length * 100 : 0}%` }} /></div></div><p className="mt-4 text-xs leading-5 text-white/70">A planning estimate based on AI research and the availability you gave. Adjust the pace as you learn; it is not a job guarantee.</p></div>
+            <div className="rounded-2xl bg-forest p-5 text-white sm:p-6"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-lime">AI role analysis · {saved.form.goal}</p><h2 className="mt-2 font-display text-2xl font-semibold">Your path, broken into doable steps</h2><p className="mt-2 text-sm leading-6 text-white/80">{saved.plan.roleSummary}</p></div><button type="button" onClick={() => setActiveRole("")} className="rounded-lg border border-white/25 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10">New roadmap</button>{doneCount > 0 && <button type="button" onClick={exportPortfolio} className="rounded-lg bg-lime px-3 py-2 text-xs font-semibold text-forest hover:bg-white">Export learning portfolio</button>}</div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3"><div className="rounded-xl bg-white/10 p-3"><span className="block text-2xl font-semibold">{weeks.length}</span><span className="text-xs text-white/75">weeks estimated</span></div><div className="rounded-xl bg-white/10 p-3"><span className="block text-2xl font-semibold">{timeLabel(saved.form.hoursPerDay * 60)}</span><span className="text-xs text-white/75">per study day</span></div><div className="col-span-2 rounded-xl bg-white/10 p-3 sm:col-span-1"><span className="block text-2xl font-semibold">~{Math.ceil(totalMinutes / 60)}h</span><span className="text-xs text-white/75">estimated effort</span></div></div><div className="mt-5"><div className="mb-1.5 flex justify-between text-xs text-white/80"><span>Progress</span><span>{doneCount}/{saved.tasks.length} blocks · {saved.tasks.length ? Math.round(doneCount / saved.tasks.length * 100) : 0}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-lime" style={{ width: `${saved.tasks.length ? doneCount / saved.tasks.length * 100 : 0}%` }} /></div></div><p className="mt-4 text-xs leading-5 text-white/70">A planning estimate based on AI research and the availability you gave. Adjust the pace as you learn; it is not a job guarantee.</p></div>
             <article className="rounded-2xl border border-ink/10 bg-white p-5 shadow-sm"><h3 className="font-display text-lg font-semibold">How your answers shaped this plan</h3><p className="mt-2 text-sm leading-6 text-slate-700">{saved.plan.inputAnalysis}</p>{saved.plan.strengths.length > 0 && <><h4 className="mt-4 text-sm font-semibold">Starting strengths</h4><ul className="mt-1 list-inside list-disc text-sm leading-6 text-slate-600">{saved.plan.strengths.map((item, i) => <li key={i}>{item}</li>)}</ul></>}{saved.plan.skillGaps.length > 0 && <><h4 className="mt-4 text-sm font-semibold">Skills to build</h4><ul className="mt-1 list-inside list-disc text-sm leading-6 text-slate-600">{saved.plan.skillGaps.map((item, i) => <li key={i}>{item}</li>)}</ul></>}{saved.plan.assumptions.length > 0 && <p className="mt-3 text-xs leading-5 text-slate-500">Assumptions: {saved.plan.assumptions.join(" · ")}</p>}</article>
             <p className="px-1 text-xs leading-5 text-slate-500">Each day shows where to learn, steps to follow, a small practice task, and a result to save. The finish estimate assumes five study days a week; take the two remaining days for rest or catch-up.</p>
-            {shareNotice && <p role="status" className="rounded-xl border border-emerald-900/10 bg-[#eaf1e5] px-4 py-3 text-sm text-emerald-950">{shareNotice}</p>}
-            {weeks.map((week) => <article key={week.number} className="overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-ink/8 bg-[#f4f6ef] px-4 py-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-800">Week {week.number}</p><h3 className="mt-0.5 font-display font-semibold">{week.tasks.reduce((n, task) => n + task.minutes, 0)} min · {week.tasks.length} study block{week.tasks.length === 1 ? "" : "s"}</h3></div><span className="text-xs font-semibold text-slate-600">{week.tasks.filter((task) => task.done).length}/{week.tasks.length} done</span></div><ol className="divide-y divide-ink/8">{week.tasks.map((task) => <li key={task.id} className="flex gap-3 px-4 py-4"><input type="checkbox" checked={task.done} onChange={() => toggle(task.id)} aria-label={`${task.done ? "Mark incomplete" : "Mark complete"}: ${task.title}`} className="mt-1 size-4 accent-emerald-800" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold uppercase tracking-wide text-emerald-800">Day {task.day}</span><span className="text-xs text-slate-500">{timeLabel(task.minutes)}</span><span className="text-xs text-slate-400">{task.phase}</span></div><p className={`mt-1 text-sm font-semibold ${task.done ? "text-slate-500 line-through" : "text-ink"}`}>{task.title}</p>{task.phasePurpose && <p className="mt-1 text-xs leading-5 text-slate-600">Why this step: {task.phasePurpose}</p>}<p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Learn here</p>{task.learnUrl ? <a className="text-xs font-semibold text-forest underline underline-offset-2" href={task.learnUrl} target="_blank" rel="noreferrer">{task.learnAt || "Open the learning resource"} <Icon name="arrow-up-right" className="inline size-3" /></a> : <p className="text-xs text-slate-500">Use the related research links at the end of this roadmap.</p>}<div className="mt-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Do these steps</p><ol className="mt-1 list-inside list-decimal space-y-1 text-xs leading-5 text-slate-700">{task.steps.map((step, i) => <li key={i}>{step}</li>)}</ol></div><p className="mt-2 text-xs leading-5"><strong>Try it:</strong> {task.practice}</p><p className="mt-1 text-xs leading-5"><strong>Save/show:</strong> {task.deliverable}</p><div className="mt-3 flex flex-wrap items-center gap-3 border-t border-ink/8 pt-3"><span className="text-xs font-semibold text-forest">Peer challenge · learn it, then explain it together</span><button type="button" onClick={() => void shareChallenge(task)} className="min-h-9 rounded-full border border-ink/15 px-3 text-xs font-semibold text-forest hover:bg-paper">Share this challenge</button><a href={`/explore?view=teach&q=${encodeURIComponent(saved.form.goal)}&roadmapChallenge=1`} className="inline-flex min-h-9 items-center rounded-full bg-forest px-3 text-xs font-semibold text-white hover:bg-emerald-950">Find a study partner</a></div></div></li>)}</ol></article>)}
+            {proofNotice && <p role="status" className="rounded-xl border border-emerald-900/10 bg-[#eaf1e5] px-4 py-3 text-sm text-emerald-950">{proofNotice}</p>}{shareNotice && <p role="status" className="rounded-xl border border-emerald-900/10 bg-[#eaf1e5] px-4 py-3 text-sm text-emerald-950">{shareNotice}</p>}
+            {weeks.map((week) => <article key={week.number} className="overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-ink/8 bg-[#f4f6ef] px-4 py-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-800">Week {week.number}</p><h3 className="mt-0.5 font-display font-semibold">{week.tasks.reduce((n, task) => n + task.minutes, 0)} min · {week.tasks.length} study block{week.tasks.length === 1 ? "" : "s"}</h3></div><span className="text-xs font-semibold text-slate-600">{week.tasks.filter((task) => task.done).length}/{week.tasks.length} done</span></div><ol className="divide-y divide-ink/8">{week.tasks.map((task) => <li key={task.id} className="flex gap-3 px-4 py-4"><input type="checkbox" checked={task.done} onChange={() => toggle(task.id)} aria-label={`${task.done ? "Mark incomplete" : "Mark complete"}: ${task.title}`} className="mt-1 size-4 accent-emerald-800" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-xs font-bold uppercase tracking-wide text-emerald-800">Day {task.day}</span><span className="text-xs text-slate-500">{timeLabel(task.minutes)}</span><span className="text-xs text-slate-400">{task.phase}</span></div><p className={`mt-1 text-sm font-semibold ${task.done ? "text-slate-500 line-through" : "text-ink"}`}>{task.title}</p>{task.phasePurpose && <p className="mt-1 text-xs leading-5 text-slate-600">Why this step: {task.phasePurpose}</p>}<p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Learn here</p>{task.learnUrl ? <a className="text-xs font-semibold text-forest underline underline-offset-2" href={task.learnUrl} target="_blank" rel="noreferrer">{task.learnAt || "Open the learning resource"} <Icon name="arrow-up-right" className="inline size-3" /></a> : <p className="text-xs text-slate-500">Use the related research links at the end of this roadmap.</p>}<div className="mt-2"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Do these steps</p><ol className="mt-1 list-inside list-decimal space-y-1 text-xs leading-5 text-slate-700">{task.steps.map((step, i) => <li key={i}>{step}</li>)}</ol></div><p className="mt-2 text-xs leading-5"><strong>Try it:</strong> {task.practice}</p><p className="mt-1 text-xs leading-5"><strong>Save/show:</strong> {task.deliverable}</p><div className="mt-3 rounded-xl border border-ink/8 bg-paper/60 p-3"><label className="block text-xs font-semibold text-ink">Add proof of what you made <span className="font-normal text-slate-500">(project, notes, or certificate link)</span><input type="url" inputMode="url" value={saved.evidence?.[task.id] || ""} onChange={(event) => setEvidence(task.id, event.target.value)} placeholder="https://…" className="mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal" /></label><button type="button" onClick={() => void saveEvidence(task.id)} disabled={savingProof === task.id} className="mt-2 min-h-9 rounded-full bg-forest px-3 text-xs font-semibold text-white disabled:opacity-60">{savingProof === task.id ? "Saving…" : "Save proof to my account"}</button></div><div className="mt-3 flex flex-wrap items-center gap-3 border-t border-ink/8 pt-3"><span className="text-xs font-semibold text-forest">Peer challenge · learn it, then explain it together</span><button type="button" onClick={() => void shareChallenge(task)} className="min-h-9 rounded-full border border-ink/15 px-3 text-xs font-semibold text-forest hover:bg-paper">Share this challenge</button><a href={`/explore?view=teach&q=${encodeURIComponent(saved.form.goal)}&roadmapChallenge=1`} className="inline-flex min-h-9 items-center rounded-full bg-forest px-3 text-xs font-semibold text-white hover:bg-emerald-950">Find a study partner</a></div></div></li>)}</ol></article>)}
             {saved.plan.projects.length > 0 && <article className="rounded-2xl border border-ink/10 bg-white p-5 shadow-sm"><h3 className="font-display text-lg font-semibold">Portfolio ideas matched to your goal</h3><ul className="mt-2 list-inside list-disc text-sm leading-6 text-slate-700">{saved.plan.projects.map((project, i) => <li key={i}>{project}</li>)}</ul></article>}
             {saved.references.length > 0 && <article className="rounded-2xl border border-ink/10 bg-white p-5 shadow-sm"><h3 className="font-display text-lg font-semibold">Research references</h3><p className="mt-1 text-xs leading-5 text-slate-600">Sources returned with the role research. Open them to review the original material.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{saved.references.map((ref) => <a key={ref.url} href={ref.url} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-ink/10 px-3 py-2 text-xs font-semibold text-forest hover:bg-paper"><span>{ref.title}</span><Icon name="arrow-up-right" className="size-4 shrink-0" /></a>)}</div></article>}
-            <p className="px-1 text-xs leading-5 text-slate-500">Your answers, plan, and completed study blocks are saved in this browser on this device.</p>
+            <p className="px-1 text-xs leading-5 text-slate-500">Your roadmap progress and proof links are saved to your account. Export your completed tasks as a portfolio you can share with mentors or internship reviewers.</p>
           </div>}
       </section>
     </div>
