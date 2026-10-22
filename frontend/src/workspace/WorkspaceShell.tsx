@@ -12,6 +12,14 @@ const links = [
   { href: "/messages", label: "Messages" }, { href: "/learning-rooms", label: "Learning rooms" },
 ];
 
+const mobileLinks = [
+  { href: "/account", label: "Home", icon: "book" as const },
+  { href: "/explore", label: "Explore", icon: "sparkles" as const },
+  { href: "/roadmap", label: "Roadmap", icon: "code" as const },
+  { href: "/sessions", label: "Sessions", icon: "video" as const },
+  { href: "/learning-rooms", label: "Rooms", icon: "people" as const },
+];
+
 type NotificationItem = { id: string; title: string; body: string; targetPath: "/requests" | "/messages"; createdAt: string; readAt: string | null };
 
 function NotificationCenter() {
@@ -98,14 +106,28 @@ export function WorkspaceShell({ user, title, eyebrow, description, children, on
         <div className="mx-auto flex max-w-7xl justify-end px-4 py-2 sm:px-7 lg:px-10"><NotificationCenter /></div>
       </header>
       {logoutError && <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-800">{logoutError}</p>}
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-7 sm:pt-10 lg:px-10 lg:pt-12">
-        <div className="mb-7 max-w-3xl sm:mb-9">
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-800">{eyebrow}</p>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl">{title}</h1>
-          <p className="mt-2.5 text-sm leading-6 text-slate-600 sm:text-base">{description}</p>
+      <div className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-7 sm:pb-16 sm:pt-8 lg:px-10 lg:pt-10">
+        <div className="workspace-intro relative mb-7 rounded-[1.5rem] px-5 py-6 sm:mb-9 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
+          <div className="relative z-10 max-w-3xl">
+            <p className="workspace-eyebrow mb-3 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] sm:text-xs"><Icon name="sparkles" className="size-4" />{eyebrow}</p>
+            <h1 className="font-display text-3xl font-semibold tracking-[-0.05em] sm:text-4xl lg:text-[2.8rem]">{title}</h1>
+            <p className="mt-2.5 max-w-2xl text-sm leading-6 sm:text-base sm:leading-7">{description}</p>
+          </div>
+          <div aria-hidden="true" className="absolute bottom-5 right-6 hidden rotate-[-8deg] rounded-2xl border border-white/15 bg-white/8 px-4 py-3 text-white/80 backdrop-blur-sm md:block">
+            <div className="flex items-center gap-2"><span className="grid size-8 place-items-center rounded-xl bg-lime/15 text-lime"><Icon name="swap" className="size-4" /></span><span className="text-xs font-semibold">Learn together. Grow further.</span></div>
+          </div>
         </div>
         {children}
       </div>
+      <nav aria-label="Quick navigation" className="mobile-dock fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-ink/10 bg-white/95 px-1 pb-[max(env(safe-area-inset-bottom),0.4rem)] pt-2 shadow-[0_-8px_28px_rgba(23,43,37,0.1)] backdrop-blur-xl sm:hidden">
+        {mobileLinks.map(({ href, label, icon }) => {
+          const active = href === "/learning-rooms" ? currentPath.startsWith(href) : currentPath === href;
+          return <a key={href} href={href} aria-current={active ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold transition-colors ${active ? "text-forest" : "text-slate-500 hover:text-forest"}`}>
+            <span className={`grid size-8 place-items-center rounded-xl transition-colors ${active ? "bg-[#e9f1ed] text-forest" : "text-slate-500"}`}><Icon name={icon} className="size-[18px]" /></span>
+            <span className="leading-none">{label}</span>
+          </a>;
+        })}
+      </nav>
     </main>
   );
 }

@@ -69,80 +69,21 @@ function ArrowLink({ href, children, light = false }: { href: string; children: 
   );
 }
 
-function HeroArtwork() {
-  return (
-    <div className="hero-art relative mx-auto aspect-[1.08/1] w-full max-w-[570px]" role="img" aria-label="Illustration of two students sharing ideas and learning together">
-      <div className="absolute inset-[6%_5%_5%_8%] overflow-hidden rounded-[2.5rem] bg-[#dce8c7] sm:rounded-[3rem]">
-        <div className="absolute -right-[7%] -top-[11%] size-[61%] rounded-full bg-[#f3b766]" />
-        <div className="absolute -bottom-[17%] -left-[10%] size-[62%] rounded-full bg-[#9bb796]" />
-        <div className="absolute left-[15%] top-[15%] size-3 rounded-full bg-white/90" />
-        <div className="absolute left-[23%] top-[11%] size-2 rounded-full bg-[#f3b766]" />
-        <div className="absolute bottom-[15%] right-[13%] size-2 rounded-full bg-white" />
-
-        <div className="absolute left-[8%] top-[13%] z-10 w-[44%] rotate-[-4deg] rounded-2xl border border-white/75 bg-white/95 p-3 shadow-xl shadow-forest/10 sm:rounded-3xl sm:p-4">
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#e9e3f6] text-[#65528e] sm:size-11">
-              <Icon name="design" className="size-5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[9px] font-bold uppercase tracking-[0.17em] text-slate-400 sm:text-[10px]">Happy to share</span>
-              <span className="mt-1 block truncate text-xs font-semibold text-ink sm:text-sm">A little design thinking</span>
-            </span>
-          </div>
-          <div className="mt-3 flex gap-1.5">
-            <span className="h-1.5 w-1/3 rounded-full bg-[#d7cbed]" />
-            <span className="h-1.5 w-1/4 rounded-full bg-[#f4dfb9]" />
-            <span className="h-1.5 w-1/5 rounded-full bg-[#dce8c7]" />
-          </div>
-        </div>
-
-        <div className="absolute bottom-[12%] right-[7%] z-20 w-[49%] rotate-[4deg] rounded-2xl border border-white/75 bg-white/95 p-3 shadow-xl shadow-forest/10 sm:rounded-3xl sm:p-4">
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#fff0c8] text-[#8b6216] sm:size-11">
-              <Icon name="code" className="size-5" />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[9px] font-bold uppercase tracking-[0.17em] text-slate-400 sm:text-[10px]">Curious about</span>
-              <span className="mt-1 block truncate text-xs font-semibold text-ink sm:text-sm">Making my first website</span>
-            </span>
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="flex -space-x-1.5">
-              <span className="size-5 rounded-full border-2 border-white bg-[#c77f65] sm:size-6" />
-              <span className="size-5 rounded-full border-2 border-white bg-[#718a70] sm:size-6" />
-              <span className="size-5 rounded-full border-2 border-white bg-[#d7b16f] sm:size-6" />
-            </span>
-            <span className="text-[10px] font-semibold text-emerald-800 sm:text-xs">Better, together <span aria-hidden="true">↗</span></span>
-          </div>
-        </div>
-
-        <div className="absolute left-[42%] top-[42%] z-10 grid size-[27%] place-items-center rounded-full border-[5px] border-white/80 bg-forest text-lime shadow-2xl shadow-forest/25 sm:border-[7px]">
-          <Icon name="swap" className="size-[45%]" />
-        </div>
-
-        <div className="absolute bottom-[9%] left-[13%] z-10 flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-2 text-[10px] font-semibold text-forest shadow-sm backdrop-blur-sm sm:text-xs">
-          <Icon name="sparkles" className="size-4" /> Skills go both ways
-        </div>
-      </div>
-      <div className="absolute right-[2%] top-[17%] -rotate-12 text-[#9cad7d]"><Icon name="sparkles" className="size-9 sm:size-12" /></div>
-      <div className="absolute bottom-[9%] left-[3%] rotate-6 text-[#dda45b]"><Icon name="sparkles" className="size-7 sm:size-9" /></div>
-    </div>
-  );
-}
-
 function SkillCard({ skill, index }: { skill: (typeof skills)[number]; index: number }) {
+  const featured = index === 0;
   return (
-    <article className="group rounded-[1.5rem] border border-ink/8 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:border-emerald-900/20 hover:shadow-xl hover:shadow-forest/5 sm:p-6">
+    <article className={`skill-bento-card group relative overflow-hidden rounded-[1.5rem] border p-5 transition-all duration-300 hover:-translate-y-1 sm:p-6 ${featured ? "min-h-64 border-sky-100 bg-[#f2f7fc] text-ink sm:p-8 lg:col-span-2" : "border-ink/8 bg-white text-ink hover:border-emerald-900/20 hover:shadow-xl hover:shadow-forest/5"}`}>
+      {featured && <div aria-hidden="true" className="pointer-events-none absolute -right-14 -top-20 size-64 rounded-full border border-sky-200/70" />}
       <div className="flex items-start justify-between">
         <span className={`grid size-12 place-items-center rounded-2xl ${skill.color} transition-transform duration-300 group-hover:rotate-[-5deg] group-hover:scale-105`}>
           <Icon name={skill.icon} className="size-6" />
         </span>
-        <span className="font-display text-sm font-semibold tracking-wide text-slate-300">0{index + 1}</span>
+        <span className={`font-display text-sm font-semibold tracking-wide ${featured ? "text-slate-300" : "text-slate-300"}`}>0{index + 1}</span>
       </div>
-      <p className="mb-2 mt-6 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-800">{skill.tag}</p>
-      <h3 className="font-display text-xl font-semibold tracking-[-0.035em] text-ink">{skill.title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{skill.description}</p>
-      <a href="/explore" className="mt-5 inline-flex items-center gap-1.5 rounded-sm text-xs font-semibold text-forest transition-colors hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700">
+      <p className={`mb-2 mt-6 text-[10px] font-bold uppercase tracking-[0.16em] ${featured ? "text-sky-800" : "text-slate-500"}`}>{skill.tag}</p>
+      <h3 className={`font-display text-xl font-semibold tracking-[-0.035em] ${"text-ink sm:text-2xl"}`}>{skill.title}</h3>
+      <p className={`mt-2 max-w-lg text-sm leading-6 ${"text-slate-600"}`}>{skill.description}</p>
+      <a href="/explore" className={`mt-5 inline-flex items-center gap-1.5 rounded-sm text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700 ${"text-forest hover:text-slate-600"}`}>
         Explore this area <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span>
       </a>
     </article>
@@ -168,34 +109,20 @@ function Homepage({ user, onLogout, loggingOut, logoutError }: HomepageProps) {
       {logoutError && <div role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-center text-sm text-red-800">{logoutError}</div>}
 
       <main>
-        <section id="home" className="scroll-mt-24 relative isolate">
-          <div className="absolute inset-x-0 top-0 -z-10 h-full bg-[radial-gradient(ellipse_at_75%_25%,rgba(218,232,196,0.46),transparent_43%)]" />
-          <div className="mx-auto grid max-w-7xl items-center gap-8 px-5 pb-16 pt-14 sm:px-8 sm:pb-20 sm:pt-20 lg:grid-cols-[1fr_0.92fr] lg:gap-6 lg:px-12 lg:pb-24 lg:pt-16">
-            <div className="max-w-2xl lg:py-8">
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-900/10 bg-white/75 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-emerald-900 shadow-sm shadow-forest/5 sm:text-xs">
-                <span className="size-2 rounded-full bg-[#a4c27d]" /> A student-powered skill exchange
-              </span>
-              <h1 className="mt-7 font-display text-[3.1rem] font-semibold leading-[0.98] tracking-[-0.065em] text-ink sm:text-6xl lg:text-[3.35rem] xl:text-[4.5rem]">
-                Trade what you know.<br />
-                <span className="relative inline-block text-emerald-800">
-                  Learn what you love.
-                  <svg aria-hidden="true" viewBox="0 0 400 18" className="absolute -bottom-2 left-1 h-3 w-[94%] text-[#c6d8a4] sm:-bottom-3 sm:h-4">
-                    <path d="M4 12c85-13 244-13 389-2" fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" />
-                  </svg>
-                </span>
-              </h1>
-              <p className="mt-7 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                You have something to teach. There’s something you’d love to learn. SkillSwap brings students together to make both happen.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <ArrowLink href="/explore">Explore skills</ArrowLink>
-                <a href="#how-it-works" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-ink/15 bg-white px-6 text-sm font-semibold text-ink transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
-                  How it works <span aria-hidden="true">↓</span>
-                </a>
-              </div>
-              <p className="mt-5 text-xs font-medium text-slate-500">No perfect plan needed. Just bring your curiosity.</p>
+        <section id="home" className="home-hero relative isolate scroll-mt-24 overflow-hidden bg-paper text-ink">
+          <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-20 size-[28rem] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
+          <div className="relative mx-auto flex min-h-[39rem] max-w-5xl flex-col items-center justify-center px-5 pb-16 pt-14 text-center sm:min-h-[43rem] sm:px-8 sm:pb-20 sm:pt-16">
+            <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 sm:text-xs"><span className="size-1.5 rounded-full bg-sky-500" />A student skill-swap community</span>
+            <h1 className="mt-6 max-w-[15ch] font-display text-[2.8rem] font-bold leading-[1.02] tracking-[-0.065em] text-ink sm:mt-7 sm:text-6xl lg:text-[4.4rem]">Teach what you know.<br /><span className="text-slate-500">Learn what you love.</span></h1>
+            <p className="mt-6 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-7 sm:text-lg sm:leading-8">Meet students with skills to share. Trade one-to-one lessons, practice together, and turn what you learn into real work you can show.</p>
+            <div className="mt-8 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:gap-4">
+              <ArrowLink href="/explore">Find your skill match</ArrowLink>
+              <a href="#how-it-works" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-ink transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest">See how it works <span aria-hidden="true">↓</span></a>
             </div>
-            <div className="lg:pl-5"><HeroArtwork /></div>
+            <p className="mt-12 text-xs font-medium text-slate-500">A place for students to share what they know and learn what they love</p>
+            <div className="mt-5 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 sm:gap-3" aria-label="A community for students and skill builders">
+              {([ ["people", "Students", "bg-blue-50 text-blue-700"], ["bulb", "Teach a skill", "bg-amber-50 text-amber-700"], ["swap", "Swap together", "bg-violet-50 text-violet-700"], ["code", "Build something", "bg-cyan-50 text-cyan-700"] ] as const).map(([icon, label, tone]) => <span key={label} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-100 bg-white px-3 py-2 text-[11px] font-semibold text-slate-800 shadow-sm sm:px-4 sm:text-xs"><span className={`grid size-6 place-items-center rounded-lg ${tone}`}><Icon name={icon} className="size-3.5" /></span>{label}</span>)}
+            </div>
           </div>
         </section>
 
