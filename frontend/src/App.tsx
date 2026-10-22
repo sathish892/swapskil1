@@ -37,9 +37,9 @@ const skills: {
 ];
 
 const steps: { number: string; title: string; description: string; icon: IconName; tone: string }[] = [
-  { number: "01", title: "Create your profile", description: "Introduce yourself and let fellow students know what you enjoy learning and sharing.", icon: "bulb", tone: "bg-[#e6f0df] text-forest" },
-  { number: "02", title: "Share skills both ways", description: "List a skill you’d be happy to teach and something you’d love to learn next.", icon: "book", tone: "bg-[#f7e9cf] text-[#8e6235]" },
-  { number: "03", title: "Connect and exchange", description: "Meet a fellow student and trade time, ideas, and hands-on practice.", icon: "people", tone: "bg-[#e9e3f6] text-[#65528e]" },
+  { number: "01", title: "Add two skills", description: "Choose one skill you can teach and one you want to learn.", icon: "bulb", tone: "bg-[#f3eaff] text-[#6543b8]" },
+  { number: "02", title: "Find a student", description: "Browse real student skill listings and request an exchange.", icon: "people", tone: "bg-[#fff0e8] text-[#c65332]" },
+  { number: "03", title: "Pick a time and practise", description: "Agree on a time, then learn together in a session or room.", icon: "video", tone: "bg-[#eaf2ff] text-[#365bb3]" },
 ];
 
 const reasons: { title: string; description: string; icon: IconName }[] = [
@@ -110,18 +110,24 @@ function Homepage({ user, onLogout, loggingOut, logoutError }: HomepageProps) {
 
       <main>
         <section id="home" className="home-hero relative isolate scroll-mt-24 overflow-hidden bg-paper text-ink">
-          <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-20 size-[28rem] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
-          <div className="relative mx-auto flex min-h-[39rem] max-w-5xl flex-col items-center justify-center px-5 pb-16 pt-14 text-center sm:min-h-[43rem] sm:px-8 sm:pb-20 sm:pt-16">
-            <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 sm:text-xs"><span className="size-1.5 rounded-full bg-sky-500" />A student skill-swap community</span>
-            <h1 className="mt-6 max-w-[15ch] font-display text-[2.8rem] font-bold leading-[1.02] tracking-[-0.065em] text-ink sm:mt-7 sm:text-6xl lg:text-[4.4rem]">Teach what you know.<br /><span className="text-slate-500">Learn what you love.</span></h1>
-            <p className="mt-6 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-7 sm:text-lg sm:leading-8">Meet students with skills to share. Trade one-to-one lessons, practice together, and turn what you learn into real work you can show.</p>
-            <div className="mt-8 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:gap-4">
-              <ArrowLink href="/explore">Find your skill match</ArrowLink>
-              <a href="#how-it-works" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-ink transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest">See how it works <span aria-hidden="true">↓</span></a>
+          <div aria-hidden="true" className="pointer-events-none absolute -left-40 top-10 size-[26rem] rounded-full bg-[#ffe7dc]/80 blur-3xl" />
+          <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-24 size-[30rem] rounded-full bg-[#e9e2ff]/75 blur-3xl" />
+          <div className="relative mx-auto flex min-h-[40rem] max-w-6xl flex-col items-center justify-center px-5 pb-16 pt-14 text-center sm:min-h-[45rem] sm:px-8 sm:pb-20 sm:pt-16">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#e7dcff] bg-white/80 px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#6046a6] shadow-sm sm:text-xs"><span className="size-2 rounded-full bg-[#ff8d68]" />Made for students who learn from each other</span>
+            <h1 className="mt-6 max-w-[15ch] font-display text-[2.7rem] font-bold leading-[1.02] tracking-[-0.065em] text-ink sm:mt-7 sm:text-6xl lg:text-[4.3rem]">Swap a skill.<br /><span className="text-[#6246b5]">Learn one in return.</span></h1>
+            <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-6 sm:text-lg sm:leading-8">Teach another student something you know. They teach you something new. Find a partner, pick a time, and practise together.</p>
+            <div className="mt-7 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row sm:gap-4">
+              <ArrowLink href="/explore">Browse student skills</ArrowLink>
+              <a href="#how-it-works" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white/90 px-6 text-sm font-semibold text-ink transition-colors hover:border-slate-300 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest">How it works <span aria-hidden="true">↓</span></a>
             </div>
-            <p className="mt-12 text-xs font-medium text-slate-500">A place for students to share what they know and learn what they love</p>
-            <div className="mt-5 flex w-full max-w-3xl flex-wrap items-center justify-center gap-2 sm:gap-3" aria-label="A community for students and skill builders">
-              {([ ["people", "Students", "bg-blue-50 text-blue-700"], ["bulb", "Teach a skill", "bg-amber-50 text-amber-700"], ["swap", "Swap together", "bg-violet-50 text-violet-700"], ["code", "Build something", "bg-cyan-50 text-cyan-700"] ] as const).map(([icon, label, tone]) => <span key={label} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-slate-100 bg-white px-3 py-2 text-[11px] font-semibold text-slate-800 shadow-sm sm:px-4 sm:text-xs"><span className={`grid size-6 place-items-center rounded-lg ${tone}`}><Icon name={icon} className="size-3.5" /></span>{label}</span>)}
+            <div className="swap-example mt-9 w-full max-w-2xl rounded-[1.75rem] border border-white bg-white/85 p-4 text-left shadow-[0_18px_55px_rgba(71,52,141,.12)] backdrop-blur sm:mt-11 sm:p-5">
+              <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Here’s what a swap looks like</p>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
+                <div className="min-w-0 rounded-2xl bg-[#fff0e9] p-3 sm:p-4"><div className="flex items-center gap-2"><span className="grid size-8 shrink-0 place-items-center rounded-xl bg-white text-[#c65332]"><Icon name="design" className="size-4" /></span><span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#a34a32] sm:text-[10px]">You teach</span></div><p className="mt-3 truncate text-sm font-bold text-ink sm:text-base">Canva posters</p></div>
+                <span className="grid size-9 place-items-center rounded-full bg-[#6348b3] text-white shadow-md sm:size-11"><Icon name="swap" className="size-5" /></span>
+                <div className="min-w-0 rounded-2xl bg-[#eeeaff] p-3 sm:p-4"><div className="flex items-center gap-2"><span className="grid size-8 shrink-0 place-items-center rounded-xl bg-white text-[#6046a6]"><Icon name="python" className="size-4" /></span><span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#6046a6] sm:text-[10px]">You learn</span></div><p className="mt-3 truncate text-sm font-bold text-ink sm:text-base">Python basics</p></div>
+              </div>
+              <p className="mt-3 text-center text-[11px] leading-5 text-slate-500 sm:text-xs">One student teaches. The other teaches back. Both get to practise.</p>
             </div>
           </div>
         </section>
@@ -129,9 +135,9 @@ function Homepage({ user, onLogout, loggingOut, logoutError }: HomepageProps) {
         <section id="how-it-works" className="scroll-mt-24 bg-white py-20 sm:py-24 lg:py-28">
           <div className="mx-auto max-w-7xl px-5 sm:px-8 lg:px-12">
             <SectionHeading
-              eyebrow="A simple exchange"
-              title="A little knowledge goes a long way."
-              description="SkillSwap makes learning feel more human: bring your curiosity, share what you know, and figure things out together."
+              eyebrow="Three steps to your first skill swap"
+              title="Pick. Match. Practise."
+              description="No confusing process: list two skills, find a student, then set a time to learn together."
             />
             <div className="relative mt-14 grid gap-5 md:mt-16 md:grid-cols-3 md:gap-6">
               <div aria-hidden="true" className="absolute left-[18%] right-[18%] top-10 hidden border-t border-dashed border-[#c9d6c0] md:block" />

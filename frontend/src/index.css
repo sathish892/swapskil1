@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #f7f9fc;
-  --color-ink: #111827;
-  --color-forest: #111b31;
-  --color-lime: #9bd6ef;
+  --color-paper: #faf8ff;
+  --color-ink: #201c2e;
+  --color-forest: #5941a6;
+  --color-lime: #ff9b78;
   --font-display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -32,21 +32,19 @@ body {
 ::view-transition-old(root),
 ::view-transition-new(root) { animation-duration: 180ms; }
 
-.home-page {
-  background: #fff;
-}
+.home-page { background: #fff; }
 
-.home-hero { background: #fbfcff; }
-.home-hero > div::before { content: ""; position: absolute; inset: auto 8% 1.5rem; height: 1px; background: linear-gradient(90deg, transparent, #e7ebf2, transparent); }
-.home-hero h1 { color: #101828; }
-.home-hero h1 span { color: #64748b; }
-.home-page .text-emerald-800 { color: #334155; }
+.home-hero { background: linear-gradient(180deg, #fff 0%, #fffaf8 50%, #fff 100%); }
+.home-hero > div:not([aria-hidden])::before { content: ""; position: absolute; inset: auto 8% 1.5rem; height: 1px; background: linear-gradient(90deg, transparent, #ebe5f5, transparent); }
+.home-hero h1 { color: #201c2e; }
+.home-hero h1 span { color: #6246b5; }
+.home-page .text-emerald-800 { color: #5941a6; }
 
 .workspace-shell {
   background: #f7f9fc;
 }
 
-.auth-screen aside { background-image: linear-gradient(145deg, #101828, #18243b 62%, #263959); }
+.auth-screen aside { background-image: linear-gradient(145deg, #35246e, #5941a6 62%, #765bc4); }
 .auth-screen aside::after {
   position: absolute;
   right: -4rem;
@@ -54,9 +52,9 @@ body {
   width: 18rem;
   height: 18rem;
   content: "";
-  border: 1px solid rgba(155, 214, 239, 0.22);
+  border: 1px solid rgba(255, 177, 148, 0.26);
   border-radius: 50%;
-  box-shadow: 0 0 0 2rem rgba(155, 214, 239, 0.035), 0 0 0 4rem rgba(155, 214, 239, 0.025);
+  box-shadow: 0 0 0 2rem rgba(255, 177, 148, 0.045), 0 0 0 4rem rgba(255, 177, 148, 0.03);
   pointer-events: none;
 }
 
@@ -73,7 +71,7 @@ body {
   isolation: isolate;
   overflow: hidden;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  background: linear-gradient(118deg, #fff 0%, #fff 64%, #f1f7fb 100%);
+  background: linear-gradient(118deg, #fff 0%, #fff 64%, #f5f0ff 100%);
   box-shadow: 0 8px 24px rgba(17, 24, 39, 0.035);
 }
 
@@ -82,7 +80,7 @@ body {
   position: absolute;
   z-index: 0;
   content: "";
-  border: 1px solid rgba(86, 155, 190, 0.12);
+  border: 1px solid rgba(100, 70, 181, 0.12);
   border-radius: 9999px;
 }
 
